@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F4D43">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Frigo">
+<title>Le Frigo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#E9F0EC; --ink:#14302A; --muted:#5E7A72; --line:#C9D8D1;
+  --spruce:#1F4D43; --paper:#F8FBF9; --rail:78px;
+  --fresh:#3E9B6B; --soon:#E8A317; --urgent:#D6452B;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{font-family:'Bricolage Grotesque',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+  padding-left:var(--rail);padding-bottom:calc(130px + env(safe-area-inset-bottom));min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--spruce);outline-offset:2px}
+
+header{padding:calc(20px + env(safe-area-inset-top)) 20px 14px}
+h1{margin:0;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1}
+#summary{margin:8px 0 0;color:var(--muted);font-size:15px}
+#summary b{color:var(--urgent);font-weight:600}
+
+section{display:none;padding:0 20px}
+section.on{display:block}
+
+/* Lignes du frigo : une bande de fraîcheur qui raccourcit avec le temps */
+.item{padding:14px 0;border-bottom:1px solid var(--line)}
+.item .top{display:flex;gap:12px;align-items:center;cursor:pointer}
+.item img{width:48px;height:48px;object-fit:contain;background:var(--paper);border-radius:6px;flex:none}
+.item .ph{width:48px;height:48px;border-radius:6px;background:var(--paper);flex:none}
+.item .name{font-weight:600;font-size:17px;line-height:1.2}
+.item .meta{color:var(--muted);font-size:14px;margin-top:2px}
+.item .qty{margin-left:auto;font-weight:800;font-size:20px}
+.bar{height:6px;border-radius:3px;background:var(--line);margin:10px 0 8px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--fresh)}
+.soon .bar i{background:var(--soon)} .urgent .bar i{background:var(--urgent)}
+.when{font-size:14px;font-weight:600;color:var(--fresh)}
+.soon .when{color:#A06F00} .urgent .when{color:var(--urgent)}
+.row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.acts{display:flex;gap:8px}
+.btn{border:1.5px solid var(--spruce);background:transparent;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;cursor:pointer}
+.btn.fill{background:var(--spruce);color:#fff}
+.btn.ghost{border-color:var(--line);color:var(--muted)}
+.empty{padding:48px 8px;text-align:center;color:var(--muted);font-size:16px;line-height:1.5}
+
+/* Courses */
+.add{display:flex;gap:8px;margin-bottom:8px}
+input[type=text],input[type=number],input[type=date],input[type=url],input[type=password]{
+  width:100%;padding:12px 14px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper)}
+.course{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line);font-size:17px}
+.course input{width:22px;height:22px;accent-color:var(--spruce);flex:none}
+.course.done span{text-decoration:line-through;color:var(--muted)}
+.course .x{margin-left:auto;background:none;border:0;font-size:22px;color:var(--muted);padding:4px 8px;cursor:pointer}
+
+/* Saison */
+.months{display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;scrollbar-width:none}
+.months button{flex:none;border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:7px 14px;font-weight:600;cursor:pointer}
+.months button.on{background:var(--spruce);border-color:var(--spruce);color:#fff}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.cols h2{font-size:18px;margin:0 0 8px}
+.cols ul{margin:0;padding:0;list-style:none}
+.cols li{padding:7px 0;border-bottom:1px solid var(--line);font-size:16px}
+
+/* Navigation */
+/* Menu vertical à gauche : rien en bas à droite, le badge Netlify ne gêne plus */
+nav{position:fixed;left:0;top:0;bottom:0;width:var(--rail);display:flex;flex-direction:column;background:var(--spruce);
+  padding-top:env(safe-area-inset-top);z-index:10}
+nav button{flex:none;background:none;border:0;color:#B8D3C9;padding:22px 0;font-weight:600;font-size:14px;cursor:pointer}
+nav button.on{color:#fff;background:rgba(255,255,255,.1);box-shadow:inset 3px 0 0 #fff}
+#fab{position:fixed;right:18px;bottom:calc(64px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;
+  border:0;background:var(--ink);color:#fff;font-size:32px;line-height:1;cursor:pointer;display:none;
+  box-shadow:0 6px 16px rgba(20,48,42,.35)}
+#fab.on{display:block}
+
+/* Fenêtres */
+dialog{border:0;border-radius:18px 18px 0 0;padding:20px;width:100%;max-width:560px;max-height:92dvh;overflow-y:auto;margin:auto auto 0;background:var(--bg);color:var(--ink)}
+.editing .addonly{display:none}
+.searchrow{display:flex;gap:8px}
+.sugg{margin-top:8px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);max-height:260px;overflow-y:auto}
+.sugg button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px;cursor:pointer;font-size:15px}
+.sugg button:last-child{border-bottom:0}
+.sugg img,.sugg i{width:36px;height:36px;object-fit:contain;flex:none}
+.sugg small{color:var(--muted)}
+.sugg .none{padding:14px;color:var(--muted);font-size:15px}
+dialog::backdrop{background:rgba(20,48,42,.5)}
+dialog h2{margin:0 0 14px;font-size:22px}
+label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+#reader{width:100%;border-radius:12px;overflow:hidden;margin-bottom:10px}
+.found{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;background:var(--paper);border-radius:10px}
+.found img{width:44px;height:44px;object-fit:contain}
+.found small{color:var(--muted)}
+.foot{display:flex;gap:10px;margin-top:20px}
+.foot .btn{flex:1;padding:13px;font-size:16px}
+/* Le message est un "popover" : il s'affiche aussi au-dessus des fenêtres de saisie */
+#toast{position:fixed;inset:auto;margin:0;border:0;left:calc(50% + var(--rail) / 2);bottom:calc(140px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;z-index:50;max-width:90%;width:max-content}
+#toast.on{opacity:1}
+#toast:popover-open{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="title">Frigo</h1>
+  <p id="summary"></p>
+</header>
+
+<section id="s-frigo" class="on"><div id="frigo"></div></section>
+
+<section id="s-courses">
+  <div class="add">
+    <input type="text" id="newCourse" placeholder="Ajouter un article" enterkeyhint="done">
+    <button class="btn fill" id="addCourse">Ajouter</button>
+  </div>
+  <div id="courses"></div>
+  <p><button class="btn ghost" id="clearDone">Vider les articles cochés</button></p>
+</section>
+
+<section id="s-saison">
+  <div class="months" id="months"></div>
+  <div class="cols">
+    <div><h2>Fruits</h2><ul id="fruits"></ul></div>
+    <div><h2>Légumes</h2><ul id="legumes"></ul></div>
+  </div>
+</section>
+
+<button id="fab" class="on" aria-label="Ajouter un produit">+</button>
+
+<nav>
+  <button data-tab="frigo" class="on">Frigo</button>
+  <button data-tab="courses">Courses</button>
+  <button data-tab="saison">Saison</button>
+</nav>
+
+<!-- Ajout produit -->
+<dialog id="dlgAdd">
+  <h2 id="dlgTitle">Ajouter au frigo</h2>
+  <div id="reader" hidden></div>
+  <div class="addonly">
+    <button class="btn fill" id="scanBtn" style="width:100%;padding:12px">Scanner un code-barres</button>
+    <label for="search">Ou chercher par nom</label>
+    <div class="searchrow">
+      <input type="text" id="search" placeholder="Yaourt nature Danone" enterkeyhint="search">
+      <button class="btn" id="searchBtn">Chercher</button>
+    </div>
+    <div id="sugg" class="sugg" hidden></div>
+  </div>
+  <label for="code">Code-barres (facultatif)</label>
+  <input type="text" id="code" inputmode="numeric" placeholder="3017620422003">
+  <div id="found"></div>
+  <label for="nom">Produit</label>
+  <input type="text" id="nom" placeholder="Yaourt nature">
+  <label for="marque">Marque</label>
+  <input type="text" id="marque" placeholder="Danone">
+  <label for="qte">Quantité</label>
+  <input type="number" id="qte" value="1" min="1" inputmode="numeric">
+  <label for="dlc">Date de péremption</label>
+  <input type="date" id="dlc">
+  <div class="chips">
+    <button class="btn ghost" data-plus="3">+3 j</button>
+    <button class="btn ghost" data-plus="7">+1 sem</button>
+    <button class="btn ghost" data-plus="14">+2 sem</button>
+    <button class="btn ghost" data-plus="30">+1 mois</button>
+  </div>
+  <div class="foot">
+    <button class="btn ghost" id="cancelAdd">Annuler</button>
+    <button class="btn fill" id="saveAdd">Ajouter au frigo</button>
+  </div>
+  <button class="btn addonly" id="saveNext" style="width:100%;margin-top:10px;padding:12px;font-size:16px">Ajouter et scanner le suivant</button>
+</dialog>
+
+<!-- Réglages -->
+<dialog id="dlgCfg">
+  <h2>Connexion</h2>
+  <label for="cfgUrl">Adresse de l'API (URL Apps Script)</label>
+  <input type="url" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec">
+  <label for="cfgPin">Code secret</label>
+  <input type="password" id="cfgPin" autocomplete="off">
+  <div class="foot"><button class="btn fill" id="saveCfg">Enregistrer</button></div>
+</dialog>
+
+<div id="toast" popover="manual" role="status"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Pré-remplis ces deux lignes pour que toute la famille n'ait rien à saisir
+const DEFAULT_URL = '';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
+const DEFAULT_PIN = '';   // le même code que dans Code.gs
+
+let CFG = {};
+try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {}
+// Lien de configuration à envoyer à la famille : https://ton-site/#u=URL_ENCODEE&p=CODE
+(function () {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('u')) {
+    CFG = { url: h.get('u'), pin: h.get('p') || '' };
+    try { localStorage.setItem('frigo_cfg', JSON.stringify(CFG)); } catch (e) {}
+    history.replaceState(null, '', location.pathname);
+  }
+})();
+if (!CFG.url && DEFAULT_URL) CFG = { url: DEFAULT_URL, pin: DEFAULT_PIN };
+let state = JSON.parse(localStorage.getItem('frigo_state') || '{"frigo":[],"courses":[]}');
+let draft = {};          // infos Open Food Facts du produit en cours d'ajout
+let scanner = null;
+
+/* ---------- API ---------- */
+// Les appels partent l'un après l'autre : on peut enchaîner les scans sans perdre de produit
+let chain = Promise.resolve();
+function api(action, data = {}) {
+  const p = chain.then(() => apiRaw(action, data));
+  chain = p.catch(() => {});
+  return p;
+}
+async function apiRaw(action, data) {
+  if (!CFG.url) { $('dlgCfg').showModal(); return null; }
+  try {
+    // Corps en texte brut : évite la requête préliminaire CORS refusée par Apps Script
+    const res = await fetch(CFG.url, { method: 'POST', body: JSON.stringify({ action, token: CFG.pin, ...data }) });
+    const txt = await res.text();
+    let json;
+    try { json = JSON.parse(txt); }
+    catch (e) { toast("L'API ne répond pas : ouvre le déploiement à « Tout le monde » et publie une nouvelle version."); return null; }
+    if (json.error) { toast(json.error); return null; }
+    state = json;
+    try { localStorage.setItem('frigo_state', JSON.stringify(state)); } catch (e) {}
+    render();
+    return json;
+  } catch (e) { toast('Pas de connexion à l\'API. Vérifie l\'URL en /exec et ta connexion.'); return null; }
+}
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg;
+  try { if (!t.matches(':popover-open')) t.showPopover(); } catch (e) { t.classList.add('on'); }
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { try { t.hidePopover(); } catch (e) {} t.classList.remove('on'); }, 2800);
+}
+
+/* ---------- Dates ---------- */
+function daysLeft(str) {
+  if (!str) return null;
+  const [y, m, d] = String(str).split('-').map(Number);
+  if (!y) return null;
+  const now = new Date();
+  return Math.round((new Date(y, m - 1, d) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+}
+function whenLabel(d) {
+  if (d === null) return 'Pas de date';
+  if (d < 0) return `Périmé depuis ${-d} j`;
+  if (d === 0) return "À consommer aujourd'hui";
+  if (d === 1) return 'À consommer demain';
+  return `Dans ${d} jours`;
+}
+function isoPlus(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/* ---------- Rendu ---------- */
+function render() { renderFrigo(); renderCourses(); }
+
+function renderFrigo() {
+  const items = state.frigo.map(i => ({ ...i, d: daysLeft(i.date_peremption) }))
+    .sort((a, b) => (a.d ?? 9999) - (b.d ?? 9999));
+  const urgent = items.filter(i => i.d !== null && i.d <= 3).length;
+  $('summary').innerHTML = !items.length ? 'Le frigo est vide'
+    : urgent ? `<b>${urgent} produit${urgent > 1 ? 's' : ''} à consommer sous 3 jours</b>`
+    : `${items.length} produit${items.length > 1 ? 's' : ''}, rien d'urgent`;
+
+  if (!items.length) {
+    $('frigo').innerHTML = '<div class="empty">Rien dans le frigo pour l\'instant.<br>Appuie sur + pour scanner un produit.</div>';
+    return;
+  }
+  $('frigo').innerHTML = items.map(i => {
+    const tone = i.d !== null && i.d <= 1 ? 'urgent' : i.d !== null && i.d <= 3 ? 'soon' : '';
+    const pct = i.d === null ? 100 : Math.max(4, Math.min(100, (i.d / 14) * 100));
+    return `<div class="item ${tone}">
+      <div class="top" data-edit="${esc(i.id)}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
+        ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
+        <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}</div></div>
+        <div class="qty">×${esc(i.quantite)}</div>
+      </div>
+      <div class="bar"><i style="width:${i.d === null ? 0 : pct}%"></i></div>
+      <div class="row">
+        <span class="when">${whenLabel(i.d)}</span>
+        <div class="acts">
+          <button class="btn ghost" data-edit="${esc(i.id)}">Modifier</button>
+          <button class="btn" data-eat="${esc(i.id)}">Mangé</button>
+          <button class="btn ghost" data-bin="${esc(i.id)}">Jeté</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCourses() {
+  const list = [...state.courses].sort((a, b) => Number(a.fait === true || a.fait === 'TRUE') - Number(b.fait === true || b.fait === 'TRUE'));
+  if (!list.length) { $('courses').innerHTML = '<div class="empty">La liste est vide.</div>'; return; }
+  $('courses').innerHTML = list.map(c => {
+    const done = c.fait === true || c.fait === 'TRUE';
+    return `<div class="course ${done ? 'done' : ''}">
+      <input type="checkbox" ${done ? 'checked' : ''} data-tog="${esc(c.id)}" aria-label="Coché">
+      <span>${esc(c.article)}${Number(c.quantite) > 1 ? ' ×' + esc(c.quantite) : ''}</span>
+      <button class="x" data-del="${esc(c.id)}" aria-label="Supprimer">×</button>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- Saison (France métropolitaine) ---------- */
+const MOIS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
+const SAISON = [
+  { f: 'Pomme, Poire, Orange, Clémentine, Kiwi, Citron, Pamplemousse', l: 'Carotte, Chou, Chou-fleur, Poireau, Endive, Épinard, Navet, Betterave, Céleri-rave, Panais, Potiron' },
+  { f: 'Pomme, Poire, Orange, Citron, Kiwi, Pamplemousse, Clémentine', l: 'Carotte, Chou, Chou-fleur, Poireau, Endive, Épinard, Navet, Betterave, Panais, Topinambour' },
+  { f: 'Pomme, Poire, Kiwi, Citron, Pamplemousse, Orange', l: 'Carotte, Chou, Poireau, Endive, Épinard, Radis, Navet, Betterave, Champignon, Blette' },
+  { f: 'Pomme, Kiwi, Rhubarbe, Citron, Fraise', l: 'Asperge, Radis, Épinard, Laitue, Carotte, Blette, Artichaut, Navet, Poireau' },
+  { f: 'Fraise, Rhubarbe, Cerise', l: 'Asperge, Artichaut, Radis, Petit pois, Fève, Laitue, Épinard, Carotte, Chou-rave, Blette' },
+  { f: 'Fraise, Cerise, Abricot, Framboise, Melon, Rhubarbe, Groseille', l: 'Courgette, Haricot vert, Petit pois, Concombre, Tomate, Radis, Artichaut, Fève, Laitue, Chou-fleur' },
+  { f: 'Pêche, Abricot, Nectarine, Framboise, Cerise, Melon, Pastèque, Prune, Myrtille, Groseille', l: 'Tomate, Courgette, Aubergine, Poivron, Concombre, Haricot vert, Maïs, Salade, Radis, Fenouil' },
+  { f: 'Pêche, Nectarine, Prune, Melon, Pastèque, Mûre, Figue, Raisin, Framboise, Myrtille', l: 'Tomate, Courgette, Aubergine, Poivron, Concombre, Haricot vert, Maïs, Fenouil, Brocoli, Blette' },
+  { f: 'Raisin, Figue, Prune, Poire, Pomme, Mûre, Noisette, Mirabelle, Quetsche', l: 'Tomate, Courgette, Aubergine, Poivron, Haricot vert, Brocoli, Chou-fleur, Champignon, Potiron, Poireau, Carotte' },
+  { f: 'Pomme, Poire, Raisin, Coing, Noix, Châtaigne, Kiwi, Figue', l: 'Potiron, Courge, Butternut, Chou, Chou-fleur, Brocoli, Poireau, Carotte, Champignon, Épinard, Betterave, Céleri, Panais, Fenouil' },
+  { f: 'Pomme, Poire, Kiwi, Clémentine, Châtaigne, Noix, Coing', l: 'Potiron, Courge, Chou, Chou-fleur, Poireau, Carotte, Betterave, Céleri, Endive, Épinard, Navet, Panais, Topinambour, Salsifis' },
+  { f: 'Clémentine, Orange, Pomme, Poire, Kiwi, Mandarine, Citron, Pamplemousse, Châtaigne', l: 'Chou, Chou-fleur, Poireau, Carotte, Endive, Épinard, Navet, Betterave, Céleri, Panais, Salsifis, Topinambour, Potiron' },
+];
+let moisSel = new Date().getMonth();
+function renderSaison() {
+  $('months').innerHTML = MOIS.map((m, i) => `<button data-m="${i}" class="${i === moisSel ? 'on' : ''}">${m}</button>`).join('');
+  const li = s => s.split(', ').map(x => `<li>${x}</li>`).join('');
+  $('fruits').innerHTML = li(SAISON[moisSel].f);
+  $('legumes').innerHTML = li(SAISON[moisSel].l);
+}
+
+/* ---------- Scan + Open Food Facts ---------- */
+async function startScan() {
+  $('reader').hidden = false;
+  try {
+    scanner = new Html5Qrcode('reader', {
+      verbose: false,
+      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                         Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E],
+    });
+    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 140 } },
+      code => {
+        if (!scanner) return;                 // un seul code par scan
+        stopScan();
+        try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+        $('code').value = code;
+        lookup(code);
+      }, () => {});
+  } catch (e) {
+    scanner = null;
+    $('reader').hidden = true;
+    toast('Caméra inaccessible. Autorise-la, ou cherche par nom.');
+  }
+}
+async function stopScan() {
+  const s = scanner; scanner = null;
+  if (s) { try { await s.stop(); s.clear(); } catch (e) {} }
+  $('reader').hidden = true;
+}
+
+/* Open Food Facts : fiche produit (nom, marque, photo, Nutri-Score) */
+const OFF_FIELDS = 'code,product_name,product_name_fr,generic_name,brands,image_front_small_url,nutriscore_grade';
+function offToProduct(p, code) {
+  return {
+    code: code || p.code || '',
+    nom: p.product_name_fr || p.product_name || p.generic_name || '',
+    marque: (p.brands || '').split(',')[0].trim(),
+    image: p.image_front_small_url || '',
+    nutriscore: ['a', 'b', 'c', 'd', 'e'].includes(p.nutriscore_grade) ? p.nutriscore_grade : '',
+  };
+}
+
+// Mémoire de l'appareil : un produit inconnu d'Open Food Facts, saisi une fois, est reconnu ensuite
+let KNOWN = {};
+try { KNOWN = JSON.parse(localStorage.getItem('frigo_known') || '{}'); } catch (e) {}
+function remember(p) {
+  if (!p.code || !p.nom) return;
+  KNOWN[p.code] = { nom: p.nom, marque: p.marque, image: p.image, nutriscore: p.nutriscore };
+  try { localStorage.setItem('frigo_known', JSON.stringify(KNOWN)); } catch (e) {}
+}
+
+function applyProduct(p) {
+  draft = { image: p.image || '', nutriscore: p.nutriscore || '' };
+  if (p.code) $('code').value = p.code;
+  $('nom').value = p.nom || '';
+  $('marque').value = p.marque || '';
+  $('sugg').hidden = true;
+  $('found').innerHTML = `<div class="found">${draft.image ? `<img src="${esc(draft.image)}" alt="">` : ''}
+    <div><b>${esc(p.nom || 'Produit trouvé')}</b><br><small>${esc(p.marque)}${p.nutriscore ? ' · Nutri-Score ' + esc(p.nutriscore.toUpperCase()) : ''}</small></div></div>`;
+  $('dlc').focus();
+}
+
+async function lookup(code) {
+  code = String(code).trim();
+  if (!code) return;
+  if (KNOWN[code]) { applyProduct({ code, ...KNOWN[code] }); return; }
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`);
+    const j = await r.json();
+    if (j.status !== 1) { toast('Produit inconnu : cherche par nom ou saisis-le.'); $('nom').focus(); return; }
+    applyProduct(offToProduct(j.product, code));
+  } catch (e) { toast('Open Food Facts injoignable.'); }
+}
+
+// Recherche par nom (sur validation seulement : Open Food Facts limite les requêtes)
+let SUGG = [];
+async function searchOFF() {
+  const q = $('search').value.trim();
+  if (q.length < 2) return;
+  const box = $('sugg');
+  box.hidden = false;
+  box.innerHTML = '<div class="none">Recherche en cours…</div>';
+  try {
+    const url = 'https://fr.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=10'
+      + '&sort_by=unique_scans_n&tagtype_0=countries&tag_contains_0=contains&tag_0=france'
+      + '&fields=' + OFF_FIELDS + '&search_terms=' + encodeURIComponent(q);
+    const j = await (await fetch(url)).json();
+    SUGG = (j.products || []).map(p => offToProduct(p)).filter(p => p.nom && p.code);
+    box.innerHTML = SUGG.length
+      ? SUGG.map((p, i) => `<button data-sg="${i}">${p.image ? `<img src="${esc(p.image)}" alt="">` : '<i></i>'}
+          <span>${esc(p.nom)}<br><small>${esc(p.marque)}</small></span></button>`).join('')
+      : '<div class="none">Aucun résultat. Saisis le produit à la main.</div>';
+  } catch (e) { box.innerHTML = '<div class="none">Open Food Facts injoignable. Saisis le produit à la main.</div>'; }
+}
+
+/* ---------- Ajout / modification d'un produit ---------- */
+let editId = null;     // null = ajout, sinon id du produit modifié
+function resetForm() {
+  editId = null; draft = {}; SUGG = [];
+  ['code', 'nom', 'marque', 'dlc', 'search'].forEach(i => $(i).value = '');
+  $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true;
+}
+function openAdd() {
+  resetForm();
+  $('dlgAdd').classList.remove('editing');
+  $('dlgTitle').textContent = 'Ajouter au frigo';
+  $('saveAdd').textContent = 'Ajouter au frigo';
+  $('dlgAdd').showModal();
+  startScan();                                  // la caméra s'ouvre tout de suite, comme dans une app de scan
+}
+function openEdit(id) {
+  const it = state.frigo.find(i => String(i.id) === String(id));
+  if (!it) return;
+  resetForm();
+  editId = it.id;
+  draft = { image: it.image || '', nutriscore: it.nutriscore || '' };
+  $('code').value = it.code_barres || '';
+  $('nom').value = it.nom || '';
+  $('marque').value = it.marque || '';
+  $('qte').value = it.quantite || 1;
+  $('dlc').value = it.date_peremption || '';
+  $('dlgAdd').classList.add('editing');
+  $('dlgTitle').textContent = 'Modifier le produit';
+  $('saveAdd').textContent = 'Enregistrer';
+  $('dlgAdd').showModal();
+}
+async function saveAdd(next) {
+  const nom = $('nom').value.trim();
+  if (!nom) { toast('Indique le nom du produit.'); return; }
+  const payload = {
+    nom, marque: $('marque').value.trim(), quantite: $('qte').value, date_peremption: $('dlc').value,
+    code_barres: $('code').value.trim(), image: draft.image || '', nutriscore: draft.nutriscore || '',
+  };
+  remember({ code: payload.code_barres, nom, marque: payload.marque, image: payload.image, nutriscore: payload.nutriscore });
+  await stopScan();
+  if (editId) {
+    $('dlgAdd').close();
+    toast('Modifié');
+    api('updateFrigo', { id: editId, ...payload });
+    return;
+  }
+  api('addFrigo', payload);
+  if (next) {                                   // on enchaîne : formulaire vide, caméra rouverte
+    resetForm();
+    $('found').innerHTML = `<div class="found"><b>✓ ${esc(nom)} ajouté au frigo</b></div>`;
+    startScan();
+  } else {
+    $('dlgAdd').close();
+    toast('Ajouté au frigo');
+  }
+}
+
+/* ---------- Événements ---------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 's-' + b.dataset.tab));
+  $('fab').classList.toggle('on', b.dataset.tab === 'frigo');
+  $('title').textContent = { frigo: 'Frigo', courses: 'Courses', saison: 'De saison' }[b.dataset.tab];
+  if (b.dataset.tab === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
+  else if (b.dataset.tab === 'courses') { $('summary').textContent = 'À acheter'; }
+  else renderFrigo();
+});
+
+$('fab').onclick = openAdd;
+$('scanBtn').onclick = startScan;
+$('code').onchange = e => lookup(e.target.value);
+$('saveAdd').onclick = () => saveAdd(false);
+$('saveNext').onclick = () => saveAdd(true);
+$('searchBtn').onclick = searchOFF;
+$('search').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); searchOFF(); } };
+$('sugg').onclick = e => { const b = e.target.closest('[data-sg]'); if (b) applyProduct(SUGG[+b.dataset.sg]); };
+$('cancelAdd').onclick = async () => { await stopScan(); $('dlgAdd').close(); };
+$('dlgAdd').addEventListener('close', stopScan);
+document.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => $('dlc').value = isoPlus(+b.dataset.plus));
+
+$('frigo').onkeydown = e => {
+  const ed = e.target.closest('.top[data-edit]');
+  if (ed && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openEdit(ed.dataset.edit); }
+};
+$('frigo').onclick = e => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { openEdit(ed.dataset.edit); return; }
+  const eat = e.target.closest('[data-eat]'), bin = e.target.closest('[data-bin]');
+  if (eat) {
+    const it = state.frigo.find(i => String(i.id) === eat.dataset.eat);
+    if (Number(it.quantite) > 1) api('setQty', { id: it.id, quantite: Number(it.quantite) - 1 });
+    else { api('removeFrigo', { id: it.id, consumed: true }); toast('Ajouté à la liste de courses'); }
+  }
+  if (bin) api('removeFrigo', { id: bin.dataset.bin, consumed: false });
+};
+
+$('addCourse').onclick = () => {
+  const v = $('newCourse').value.trim(); if (!v) return;
+  $('newCourse').value = ''; api('addCourse', { article: v, quantite: 1 });
+};
+$('newCourse').onkeydown = e => { if (e.key === 'Enter') $('addCourse').click(); };
+$('courses').onclick = e => {
+  const t = e.target.closest('[data-tog]'), d = e.target.closest('[data-del]');
+  if (t) api('toggleCourse', { id: t.dataset.tog });
+  if (d) api('removeCourse', { id: d.dataset.del });
+};
+$('clearDone').onclick = () => api('clearDone');
+$('months').onclick = e => { const b = e.target.closest('[data-m]'); if (b) { moisSel = +b.dataset.m; renderSaison(); } };
+
+$('saveCfg').onclick = () => {
+  CFG = { url: $('cfgUrl').value.trim(), pin: $('cfgPin').value };
+  localStorage.setItem('frigo_cfg', JSON.stringify(CFG));
+  $('dlgCfg').close(); api('list');
+};
+
+/* ---------- Démarrage ---------- */
+render();
+if (!CFG.url) $('dlgCfg').showModal(); else api('list');
+document.addEventListener('visibilitychange', () => { if (!document.hidden && CFG.url) api('list'); });
+</script>
+</body>
+</html>
