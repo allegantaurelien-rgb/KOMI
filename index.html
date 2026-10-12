@@ -113,6 +113,8 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 .found{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;background:var(--paper);border-radius:10px}
 .found img{width:44px;height:44px;object-fit:contain}
 .found small{color:var(--muted)}
+.found.note{display:block;font-size:15px;line-height:1.4}
+.found.err{background:#FBE9E5;color:#8E2A16}
 .foot{display:flex;gap:10px;margin-top:20px}
 .foot .btn{flex:1;padding:13px;font-size:16px}
 /* Le message est un "popover" : il s'affiche aussi au-dessus des fenêtres de saisie */
@@ -225,7 +227,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Colle ici l'URL de ton déploiement Apps Script (celle qui finit par /exec).
 // L'app ne demandera plus que le code secret, une seule fois par appareil.
-const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUEIoo6Q_QVP5y-JP3SqhpyDYch-0mRlK3LtY7pZh4SGbBW1zxz2JAshdaQ2u35oHBvQ/exec';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
+const DEFAULT_URL = '';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
 
 let CFG = {};
 try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {}
@@ -418,30 +420,54 @@ async function getRecipes() {
 }
 
 /* ---------- Scan + Open Food Facts ---------- */
+// Message affiché DANS la fenêtre (un petit message qui disparaît se rate trop facilement)
+function note(html, kind) {
+  $('found').innerHTML = `<div class="found note ${kind || ''}">${html}</div>`;
+}
+
+let scanning = false;
 async function startScan() {
+  if (scanning) return;                       // déjà en cours : un second démarrage bloquerait la caméra
+  if (typeof Html5Qrcode === 'undefined') {
+    note("Le lecteur de code-barres n'a pas pu se charger (connexion ?). Recharge la page, ou cherche par nom.", 'err');
+    return;
+  }
+  scanning = true;
+  $('scanBtn').textContent = 'Caméra en cours…';
   $('reader').hidden = false;
+  const inst = new Html5Qrcode('reader', {
+    verbose: false,
+    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                       Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E],
+  });
+  scanner = inst;
+  let handled = false;
   try {
-    scanner = new Html5Qrcode('reader', {
-      verbose: false,
-      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-                         Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E],
-    });
-    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 140 } },
+    await inst.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 140 } },
       code => {
-        if (!scanner) return;                 // un seul code par scan
+        if (handled) return;                  // un seul code par scan
+        handled = true;
         stopScan();
         try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
         $('code').value = code;
+        note(`Code lu : <b>${esc(code)}</b>. Recherche du produit…`);
         lookup(code);
       }, () => {});
   } catch (e) {
-    scanner = null;
+    scanner = null; scanning = false;
     $('reader').hidden = true;
-    toast('Caméra inaccessible. Autorise-la, ou cherche par nom.');
+    $('scanBtn').textContent = 'Scanner un code-barres';
+    const n = (e && e.name) || '', m = String((e && e.message) || e || '');
+    note(/NotAllowed|Permission/i.test(n + m)
+        ? "La caméra est refusée. Autorise-la dans les réglages du navigateur pour ce site, puis réessaie."
+      : /NotFound|Requested device not found/i.test(n + m) ? "Aucune caméra trouvée sur cet appareil."
+      : /NotReadable|in use|Could not start/i.test(n + m) ? "La caméra est utilisée par une autre application. Ferme-la et réessaie."
+      : "Caméra impossible à démarrer (" + esc(m.slice(0, 80)) + "). Cherche par nom ou saisis le code.", 'err');
   }
 }
 async function stopScan() {
-  const s = scanner; scanner = null;
+  const s = scanner; scanner = null; scanning = false;
+  $('scanBtn').textContent = 'Scanner un code-barres';
   if (s) { try { await s.stop(); s.clear(); } catch (e) {} }
   $('reader').hidden = true;
 }
@@ -482,12 +508,27 @@ async function lookup(code) {
   code = String(code).trim();
   if (!code) return;
   if (KNOWN[code]) { applyProduct({ code, ...KNOWN[code] }); return; }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);        // pas d'attente infinie
   try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`);
-    const j = await r.json();
-    if (j.status !== 1) { toast('Produit inconnu : cherche par nom ou saisis-le.'); $('nom').focus(); return; }
-    applyProduct(offToProduct(j.product, code));
-  } catch (e) { toast('Open Food Facts injoignable.'); }
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`,
+      { signal: ctl.signal });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (j && j.status === 1 && j.product) { applyProduct(offToProduct(j.product, code)); return; }
+    if (r.status === 404 || (j && j.status === 0)) {        // Open Food Facts répond : produit absent de la base
+      note(`Code <b>${esc(code)}</b> absent d'Open Food Facts. Saisis le nom ci-dessous : il sera reconnu au prochain scan.`);
+      $('nom').focus();
+      return;
+    }
+    note(`Open Food Facts a répondu une erreur (${r.status}). Saisis le nom à la main, ou réessaie dans un instant.`, 'err');
+    $('nom').focus();
+  } catch (e) {
+    note(e && e.name === 'AbortError'
+      ? "Open Food Facts met trop de temps à répondre. Saisis le nom à la main, ou réessaie."
+      : "Impossible de joindre Open Food Facts (connexion ?). Saisis le nom à la main, ou réessaie.", 'err');
+    $('nom').focus();
+  } finally { clearTimeout(timer); }
 }
 
 // Recherche par nom (sur validation seulement : Open Food Facts limite les requêtes)
