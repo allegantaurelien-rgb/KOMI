@@ -225,7 +225,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Colle ici l'URL de ton déploiement Apps Script (celle qui finit par /exec).
 // L'app ne demandera plus que le code secret, une seule fois par appareil.
-const DEFAULT_URL = '';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUEIoo6Q_QVP5y-JP3SqhpyDYch-0mRlK3LtY7pZh4SGbBW1zxz2JAshdaQ2u35oHBvQ/exec';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
 
 let CFG = {};
 try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {}
