@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.5/dist/iife/reader/index.js" defer></script>
 <style>
 :root{
   --bg:#E9F0EC; --ink:#14302A; --muted:#5E7A72; --line:#C9D8D1;
@@ -109,7 +109,9 @@ dialog::backdrop{background:rgba(20,48,42,.5)}
 dialog h2{margin:0 0 14px;font-size:22px}
 label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-#reader{width:100%;border-radius:12px;overflow:hidden;margin-bottom:10px}
+#reader{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;overflow:hidden;margin-bottom:10px;background:#000}
+#reader video{width:100%;height:100%;object-fit:cover;display:block}
+#reader .guide{position:absolute;left:6%;width:88%;top:25%;height:50%;border:3px solid #fff;border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.4);pointer-events:none}
 .found{display:flex;gap:12px;align-items:center;margin-top:12px;padding:10px;background:var(--paper);border-radius:10px}
 .found img{width:44px;height:44px;object-fit:contain}
 .found small{color:var(--muted)}
@@ -174,7 +176,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <!-- Ajout produit -->
 <dialog id="dlgAdd">
   <h2 id="dlgTitle">Ajouter au frigo</h2>
-  <div id="reader" hidden></div>
+  <div id="reader" hidden><video id="cam" playsinline muted autoplay></video><div class="guide"></div></div>
   <div class="addonly">
     <button class="btn fill" id="scanBtn" style="width:100%;padding:12px">Scanner un code-barres</button>
     <label for="search">Ou chercher par nom</label>
@@ -249,7 +251,6 @@ function openCfg() {
 }
 let state = JSON.parse(localStorage.getItem('frigo_state') || '{"frigo":[],"courses":[]}');
 let draft = {};          // infos Open Food Facts du produit en cours d'ajout
-let scanner = null;
 
 /* ---------- API ---------- */
 // Les appels partent l'un après l'autre : on peut enchaîner les scans sans perdre de produit
@@ -425,52 +426,136 @@ function note(html, kind) {
   $('found').innerHTML = `<div class="found note ${kind || ''}">${html}</div>`;
 }
 
-let scanning = false;
+/* Lecteur de code-barres : zxing-wasm (plus robuste que les lecteurs JS) + caméra gérée directement */
+let scanning = false, scanToken = 0, stream = null, zxReady = null, lastLookup = '';
+const ZX_OPTS = { formats: ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E'], tryHarder: true, maxNumberOfSymbols: 1 };
+
+function loadZX() {
+  if (!zxReady) zxReady = (async () => {
+    if (typeof ZXingWASM === 'undefined') return false;
+    try { await ZXingWASM.prepareZXingModule({ fireImmediately: true }); return true; } catch (e) { return false; }
+  })();
+  return zxReady;
+}
+window.addEventListener('load', () => { loadZX(); });        // préchargé : la caméra s'ouvre sans attendre
+
+// Partie de l'image réellement visible dans le carré d'aperçu (object-fit: cover)
+function visibleRect(vw, vh) {
+  if (vw > vh) { const w = vh; return { x: (vw - w) / 2, y: 0, w, h: vh }; }
+  const h = vw; return { x: 0, y: (vh - h) / 2, w: vw, h };
+}
+// Flou 3x3 : le grain du capteur gêne la lecture des barres fines, un léger flou la rend plus fiable
+function blur3(img) {
+  const { data, width: w, height: h } = img;
+  const g = new Float32Array(w * h);
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = data[j] * 0.299 + data[j + 1] * 0.587 + data[j + 2] * 0.114;
+  const out = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < h; y++) {
+    const a = Math.max(0, y - 1) * w, b = y * w, c = Math.min(h - 1, y + 1) * w;
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - 1), x1 = Math.min(w - 1, x + 1);
+      const v = (g[a + x0] + g[a + x] + g[a + x1] + g[b + x0] + g[b + x] + g[b + x1] + g[c + x0] + g[c + x] + g[c + x1]) / 9;
+      const k = (b + x) * 4; out[k] = out[k + 1] = out[k + 2] = v; out[k + 3] = 255;
+    }
+  }
+  return new ImageData(out, w, h);
+}
+async function decodeImg(img) {
+  const r = await ZXingWASM.readBarcodes(img, ZX_OPTS);
+  return r && r.length ? r[0].text : null;
+}
+const scanCv = document.createElement('canvas');
+const scanCx = scanCv.getContext('2d', { willReadFrequently: true });
+async function scanFrame(video, n) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const vis = visibleRect(vw, vh);                           // on lit la bande centrale, celle du cadre blanc
+  const bx = vis.x + vis.w * 0.06, by = vis.y + vis.h * 0.25, bw = vis.w * 0.88, bh = vis.h * 0.5;
+  const s = Math.min(1, 1000 / bw);
+  for (const k of (n % 2 ? [1, 0.7] : [1])) {               // 2 échelles, pour s'adapter à la distance
+    const w = Math.max(40, Math.round(bw * s * k)), h = Math.max(20, Math.round(bh * s * k));
+    scanCv.width = w; scanCv.height = h;
+    scanCx.drawImage(video, bx, by, bw, bh, 0, 0, w, h);
+    const img = scanCx.getImageData(0, 0, w, h);
+    const t = (await decodeImg(img)) || (await decodeImg(blur3(img)));
+    if (t) return t;
+  }
+  return null;
+}
+async function scanLoop(token) {
+  let n = 0;
+  while (scanning && token === scanToken) {
+    const v = $('cam');
+    if (v.readyState >= 2) {
+      try {
+        const code = await scanFrame(v, n++);
+        if (code && scanning && token === scanToken) { onCode(code); return; }
+      } catch (e) {}
+    }
+    await new Promise(r => setTimeout(r, 80));
+  }
+}
+function onCode(code) {
+  stopScan();
+  try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+  $('code').value = code;
+  note(`Code lu : <b>${esc(code)}</b>. Recherche du produit…`);
+  lookupOnce(code);
+}
+
 async function startScan() {
-  if (scanning) return;                       // déjà en cours : un second démarrage bloquerait la caméra
-  if (typeof Html5Qrcode === 'undefined') {
-    note("Le lecteur de code-barres n'a pas pu se charger (connexion ?). Recharge la page, ou cherche par nom.", 'err');
+  if (scanning) { await stopScan(); return; }                // le bouton sert aussi à arrêter la caméra
+  scanning = true;
+  const token = ++scanToken;
+  $('scanBtn').textContent = 'Arrêter la caméra';
+  note('Ouverture de la caméra…');
+  const fail = async html => { await stopScan(); note(html, 'err'); };
+  if (!(await loadZX())) {
+    zxReady = null;                                          // permet de réessayer
+    if (token === scanToken) await fail("Le lecteur de code-barres n'a pas pu se charger (connexion ?). Recharge la page, ou saisis les chiffres du code-barres ci-dessous.");
     return;
   }
-  scanning = true;
-  $('scanBtn').textContent = 'Caméra en cours…';
-  $('reader').hidden = false;
-  const inst = new Html5Qrcode('reader', {
-    verbose: false,
-    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-                       Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E],
-  });
-  scanner = inst;
-  let handled = false;
+  if (token !== scanToken) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    await fail('Caméra indisponible ici (le site doit être ouvert en https).'); return;
+  }
+  let s;
   try {
-    await inst.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 140 } },
-      code => {
-        if (handled) return;                  // un seul code par scan
-        handled = true;
-        stopScan();
-        try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
-        $('code').value = code;
-        note(`Code lu : <b>${esc(code)}</b>. Recherche du produit…`);
-        lookup(code);
-      }, () => {});
+    s = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
   } catch (e) {
-    scanner = null; scanning = false;
-    $('reader').hidden = true;
-    $('scanBtn').textContent = 'Scanner un code-barres';
+    if (token !== scanToken) return;
     const n = (e && e.name) || '', m = String((e && e.message) || e || '');
-    note(/NotAllowed|Permission/i.test(n + m)
+    await fail(/NotAllowed|Permission/i.test(n + m)
         ? "La caméra est refusée. Autorise-la dans les réglages du navigateur pour ce site, puis réessaie."
       : /NotFound|Requested device not found/i.test(n + m) ? "Aucune caméra trouvée sur cet appareil."
       : /NotReadable|in use|Could not start/i.test(n + m) ? "La caméra est utilisée par une autre application. Ferme-la et réessaie."
-      : "Caméra impossible à démarrer (" + esc(m.slice(0, 80)) + "). Cherche par nom ou saisis le code.", 'err');
+      : "Caméra impossible à démarrer (" + esc(m.slice(0, 80)) + "). Saisis les chiffres du code-barres ci-dessous.");
+    return;
   }
+  if (token !== scanToken) { s.getTracks().forEach(t => t.stop()); return; }   // arrêté pendant l'attente
+  stream = s;
+  const v = $('cam');
+  v.srcObject = s;
+  $('reader').hidden = false;
+  try { await v.play(); } catch (e) {}
+  try {                                                      // mise au point continue, quand le téléphone la propose
+    const t = s.getVideoTracks()[0], caps = t.getCapabilities ? t.getCapabilities() : {};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) await t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+  } catch (e) {}
+  note('Place le code-barres dans le cadre, bien à plat, à 15 ou 20 cm. Pas lu ? Saisis les chiffres sous le code-barres, plus bas.');
+  scanLoop(token);
 }
 async function stopScan() {
-  const s = scanner; scanner = null; scanning = false;
+  scanning = false; scanToken++;
   $('scanBtn').textContent = 'Scanner un code-barres';
-  if (s) { try { await s.stop(); s.clear(); } catch (e) {} }
+  const s = stream; stream = null;
+  if (s) s.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+  const v = $('cam');
+  try { v.pause(); v.srcObject = null; } catch (e) {}
   $('reader').hidden = true;
 }
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopScan(); });   // économise la batterie
 
 /* Open Food Facts : fiche produit (nom, marque, photo, Nutri-Score) */
 const OFF_FIELDS = 'code,product_name,product_name_fr,generic_name,brands,image_front_small_url,nutriscore_grade';
@@ -504,6 +589,13 @@ function applyProduct(p) {
   $('dlc').focus();
 }
 
+// Évite de relancer deux fois la même recherche (scan puis saisie, par exemple)
+function lookupOnce(code) {
+  code = String(code).replace(/\D/g, '');
+  if (!code || code === lastLookup) return;
+  lastLookup = code;
+  lookup(code);
+}
 async function lookup(code) {
   code = String(code).trim();
   if (!code) return;
@@ -555,7 +647,7 @@ async function searchOFF() {
 /* ---------- Ajout / modification d'un produit ---------- */
 let editId = null;     // null = ajout, sinon id du produit modifié
 function resetForm() {
-  editId = null; draft = {}; SUGG = [];
+  editId = null; draft = {}; SUGG = []; lastLookup = '';
   ['code', 'nom', 'marque', 'dlc', 'search'].forEach(i => $(i).value = '');
   $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true;
 }
@@ -623,7 +715,13 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 
 $('fab').onclick = openAdd;
 $('scanBtn').onclick = startScan;
-$('code').onchange = e => lookup(e.target.value);
+// Saisie manuelle : la fiche se remplit dès que les 8, 12 ou 13 chiffres sont tapés
+$('code').oninput = e => {
+  const v = e.target.value.replace(/\D/g, '');
+  if ([8, 12, 13].includes(v.length)) lookupOnce(v);
+  else if (v.length < 8) lastLookup = '';
+};
+$('code').onchange = e => lookupOnce(e.target.value);
 $('saveAdd').onclick = () => saveAdd(false);
 $('saveNext').onclick = () => saveAdd(true);
 $('searchBtn').onclick = searchOFF;
