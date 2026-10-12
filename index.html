@@ -70,6 +70,20 @@ input[type=text],input[type=number],input[type=date],input[type=url],input[type=
 .cols ul{margin:0;padding:0;list-style:none}
 .cols li{padding:7px 0;border-bottom:1px solid var(--line);font-size:16px}
 
+/* Recettes */
+.rec-form{margin-bottom:18px}
+.rec-form input{max-width:100%}
+.rec-form button:disabled{opacity:.6;cursor:wait}
+.rec-alert{background:#FBE9E5;color:#8E2A16;padding:10px 12px;border-radius:10px;font-size:15px;margin:0 0 12px}
+.rec{border-bottom:1px solid var(--line);padding:4px 0}
+.rec summary{display:flex;justify-content:space-between;gap:12px;align-items:baseline;cursor:pointer;padding:12px 0;list-style:none}
+.rec summary::-webkit-details-marker{display:none}
+.rt{font-weight:600;font-size:18px;line-height:1.25}
+.rm{color:var(--muted);font-size:14px;flex:none}
+.rec p{margin:6px 0;font-size:15px}
+.rec ol{padding-left:20px;margin:10px 0 14px;line-height:1.5;font-size:16px}
+.rec-when{color:var(--muted);font-size:13px;margin-top:14px}
+
 /* Navigation */
 /* Menu vertical à gauche : rien en bas à droite, le badge Netlify ne gêne plus */
 nav{position:fixed;left:0;top:0;bottom:0;width:var(--rail);display:flex;flex-direction:column;background:var(--spruce);
@@ -112,7 +126,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <body>
 
 <header>
-  <h1 id="title">KOMI</h1>
+  <h1 id="title">Frigo</h1>
   <p id="summary"></p>
 </header>
 
@@ -135,11 +149,23 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
   </div>
 </section>
 
+<section id="s-recettes">
+  <div class="rec-form">
+    <label for="personnes">Pour combien de personnes ?</label>
+    <input type="number" id="personnes" min="1" max="12" value="4" inputmode="numeric">
+    <label for="envie">Une envie ? (facultatif)</label>
+    <input type="text" id="envie" placeholder="rapide, sans four, plat froid…" maxlength="120">
+    <button class="btn fill" id="getRec" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Proposer des recettes</button>
+  </div>
+  <div id="recettes"></div>
+</section>
+
 <button id="fab" class="on" aria-label="Ajouter un produit">+</button>
 
 <nav>
   <button data-tab="frigo" class="on">Frigo</button>
   <button data-tab="courses">Courses</button>
+  <button data-tab="recettes">Recettes</button>
   <button data-tab="saison">Saison</button>
 </nav>
 
@@ -183,8 +209,10 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <!-- Réglages -->
 <dialog id="dlgCfg">
   <h2>Connexion</h2>
-  <label for="cfgUrl">Adresse de l'API (URL Apps Script)</label>
-  <input type="url" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec">
+  <div id="cfgUrlBox">
+    <label for="cfgUrl">Adresse de l'API (URL Apps Script)</label>
+    <input type="url" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec">
+  </div>
   <label for="cfgPin">Code secret</label>
   <input type="password" id="cfgPin" autocomplete="off">
   <div class="foot"><button class="btn fill" id="saveCfg">Enregistrer</button></div>
@@ -195,9 +223,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-// Pré-remplis ces deux lignes pour que toute la famille n'ait rien à saisir
+// Colle ici l'URL de ton déploiement Apps Script (celle qui finit par /exec).
+// L'app ne demandera plus que le code secret, une seule fois par appareil.
 const DEFAULT_URL = '';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
-const DEFAULT_PIN = '';   // le même code que dans Code.gs
 
 let CFG = {};
 try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {}
@@ -210,7 +238,13 @@ try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {
     history.replaceState(null, '', location.pathname);
   }
 })();
-if (!CFG.url && DEFAULT_URL) CFG = { url: DEFAULT_URL, pin: DEFAULT_PIN };
+if (DEFAULT_URL) CFG.url = DEFAULT_URL;
+function openCfg() {
+  $('cfgUrl').value = CFG.url || '';
+  $('cfgUrlBox').hidden = !!DEFAULT_URL;          // URL déjà connue : on ne demande que le code
+  $('cfgPin').value = '';
+  if (!$('dlgCfg').open) $('dlgCfg').showModal();
+}
 let state = JSON.parse(localStorage.getItem('frigo_state') || '{"frigo":[],"courses":[]}');
 let draft = {};          // infos Open Food Facts du produit en cours d'ajout
 let scanner = null;
@@ -219,12 +253,13 @@ let scanner = null;
 // Les appels partent l'un après l'autre : on peut enchaîner les scans sans perdre de produit
 let chain = Promise.resolve();
 function api(action, data = {}) {
+  if (action === 'recipes') return apiRaw(action, data);   // long : ne bloque pas les autres actions
   const p = chain.then(() => apiRaw(action, data));
   chain = p.catch(() => {});
   return p;
 }
 async function apiRaw(action, data) {
-  if (!CFG.url) { $('dlgCfg').showModal(); return null; }
+  if (!CFG.url || !CFG.pin) { openCfg(); return null; }
   try {
     // Corps en texte brut : évite la requête préliminaire CORS refusée par Apps Script
     const res = await fetch(CFG.url, { method: 'POST', body: JSON.stringify({ action, token: CFG.pin, ...data }) });
@@ -232,7 +267,12 @@ async function apiRaw(action, data) {
     let json;
     try { json = JSON.parse(txt); }
     catch (e) { toast("L'API ne répond pas : ouvre le déploiement à « Tout le monde » et publie une nouvelle version."); return null; }
-    if (json.error) { toast(json.error); return null; }
+    if (json.error) {
+      toast(json.error);
+      if (json.error === 'Code incorrect') openCfg();   // on redemande le code
+      return null;
+    }
+    if (json.recettes) return json;          // réponse « recettes » : ne remplace pas le frigo
     state = json;
     try { localStorage.setItem('frigo_state', JSON.stringify(state)); } catch (e) {}
     render();
@@ -339,6 +379,42 @@ function renderSaison() {
   const li = s => s.split(', ').map(x => `<li>${x}</li>`).join('');
   $('fruits').innerHTML = li(SAISON[moisSel].f);
   $('legumes').innerHTML = li(SAISON[moisSel].l);
+}
+
+/* ---------- Recettes (API Claude via Apps Script) ---------- */
+let REC = null;
+try { REC = JSON.parse(localStorage.getItem('frigo_rec') || 'null'); } catch (e) {}
+
+function renderRecettes() {
+  if (!REC || !REC.recettes) {
+    $('recettes').innerHTML = '<div class="empty">Appuie sur « Proposer des recettes » : les produits qui périment en premier passent en priorité.</div>';
+    return;
+  }
+  const when = REC.at ? new Date(REC.at).toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' }) : '';
+  $('recettes').innerHTML = (REC.alerte ? `<p class="rec-alert">${esc(REC.alerte)}</p>` : '')
+    + REC.recettes.map((x, k) => `<details class="rec" ${k === 0 ? 'open' : ''}>
+        <summary><span class="rt">${esc(x.titre)}</span><span class="rm">${Number(x.temps_min) ? esc(x.temps_min) + ' min' : ''}</span></summary>
+        <p><b>Avec :</b> ${(x.utilise || []).map(u => esc(u)).join(', ')}</p>
+        ${(x.a_acheter || []).length ? `<p><b>À acheter :</b> ${x.a_acheter.map(u => esc(u)).join(', ')}</p>
+          <button class="btn" data-buy="${k}">Ajouter à la liste de courses</button>` : ''}
+        <ol>${(x.etapes || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+      </details>`).join('')
+    + (when ? `<p class="rec-when">Proposé ${esc(when)}</p>` : '');
+}
+
+async function getRecipes() {
+  if (!CFG.url || !CFG.pin) { openCfg(); return; }
+  const btn = $('getRec');
+  const personnes = Math.max(1, Math.min(12, Number($('personnes').value) || 4));
+  try { localStorage.setItem('frigo_people', String(personnes)); } catch (e) {}
+  const again = !!REC;                         // une proposition existe déjà : on veut de nouvelles idées
+  btn.disabled = true; btn.textContent = 'Recherche en cours…';
+  const r = await api('recipes', { personnes, envie: $('envie').value.trim(), refresh: again });
+  btn.disabled = false; btn.textContent = 'Proposer d\'autres idées';
+  if (!r) return;                              // le message d'erreur est déjà affiché
+  REC = { alerte: r.alerte || '', recettes: r.recettes, at: Date.now() };
+  try { localStorage.setItem('frigo_rec', JSON.stringify(REC)); } catch (e) {}
+  renderRecettes();
 }
 
 /* ---------- Scan + Open Food Facts ---------- */
@@ -497,8 +573,9 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 's-' + b.dataset.tab));
   $('fab').classList.toggle('on', b.dataset.tab === 'frigo');
-  $('title').textContent = { frigo: 'Frigo', courses: 'Courses', saison: 'De saison' }[b.dataset.tab];
-  if (b.dataset.tab === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
+  $('title').textContent = { frigo: 'Frigo', courses: 'Courses', recettes: 'Recettes', saison: 'De saison' }[b.dataset.tab];
+  if (b.dataset.tab === 'recettes') { $('summary').textContent = 'Pour finir ce qui périme en premier'; renderRecettes(); }
+  else if (b.dataset.tab === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
   else if (b.dataset.tab === 'courses') { $('summary').textContent = 'À acheter'; }
   else renderFrigo();
 });
@@ -531,6 +608,17 @@ $('frigo').onclick = e => {
   if (bin) api('removeFrigo', { id: bin.dataset.bin, consumed: false });
 };
 
+$('getRec').onclick = getRecipes;
+$('personnes').value = localStorage.getItem('frigo_people') || 4;
+if (REC) $('getRec').textContent = 'Proposer d\'autres idées';
+$('recettes').onclick = e => {
+  const b = e.target.closest('[data-buy]');
+  if (!b || !REC) return;
+  const list = (REC.recettes[+b.dataset.buy] || {}).a_acheter || [];
+  list.forEach(article => api('addCourse', { article, quantite: 1 }));
+  toast(list.length > 1 ? 'Ingrédients ajoutés aux courses' : 'Ajouté aux courses');
+};
+
 $('addCourse').onclick = () => {
   const v = $('newCourse').value.trim(); if (!v) return;
   $('newCourse').value = ''; api('addCourse', { article: v, quantite: 1 });
@@ -545,15 +633,18 @@ $('clearDone').onclick = () => api('clearDone');
 $('months').onclick = e => { const b = e.target.closest('[data-m]'); if (b) { moisSel = +b.dataset.m; renderSaison(); } };
 
 $('saveCfg').onclick = () => {
-  CFG = { url: $('cfgUrl').value.trim(), pin: $('cfgPin').value };
-  localStorage.setItem('frigo_cfg', JSON.stringify(CFG));
+  const url = DEFAULT_URL || $('cfgUrl').value.trim();
+  const pin = $('cfgPin').value;
+  if (!url || !pin) { toast(url ? 'Saisis ton code secret.' : "Saisis l'adresse de l'API et ton code."); return; }
+  CFG = { url, pin };
+  try { localStorage.setItem('frigo_cfg', JSON.stringify(CFG)); } catch (e) {}
   $('dlgCfg').close(); api('list');
 };
 
 /* ---------- Démarrage ---------- */
 render();
-if (!CFG.url) $('dlgCfg').showModal(); else api('list');
-document.addEventListener('visibilitychange', () => { if (!document.hidden && CFG.url) api('list'); });
+if (!CFG.url || !CFG.pin) openCfg(); else api('list');
+document.addEventListener('visibilitychange', () => { if (!document.hidden && CFG.url && CFG.pin) api('list'); });
 </script>
 </body>
 </html>
