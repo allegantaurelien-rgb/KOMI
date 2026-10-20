@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4D43">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Frigo">
-<title>Le Frigo</title>
+<meta name="apple-mobile-web-app-title" content="KOMI">
+<title>KOMI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
@@ -51,6 +51,21 @@ section.on{display:block}
 .btn.fill{background:var(--spruce);color:#fff}
 .btn.ghost{border-color:var(--line);color:var(--muted)}
 .empty{padding:48px 8px;text-align:center;color:var(--muted);font-size:16px;line-height:1.5}
+
+/* Congélateur, filtre, fruits et légumes */
+.seg{display:flex;gap:8px;margin:0 0 4px;overflow-x:auto;scrollbar-width:none}
+.seg[hidden]{display:none}
+.seg button{flex:none;border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;cursor:pointer}
+.seg button.on{background:var(--spruce);border-color:var(--spruce);color:#fff}
+.frozen:not(.soon):not(.urgent) .bar i{background:#4B8FC7}
+.frozen:not(.soon):not(.urgent) .when{color:#2F6EA3}
+.thawed .when{color:#A06F00}
+.hint{font-size:14px;color:var(--muted);margin:0 0 6px;line-height:1.4}
+.prod{margin-top:8px}
+.prod h3{font-size:14px;margin:12px 0 6px}
+.prod .chips{margin-top:0}
+.prod .chips button{padding:6px 12px}
+.acts{flex-wrap:wrap}
 
 /* Courses */
 .add{display:flex;gap:8px;margin-bottom:8px}
@@ -130,11 +145,14 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <body>
 
 <header>
-  <h1 id="title">Frigo</h1>
+  <h1 id="title">KOMI</h1>
   <p id="summary"></p>
 </header>
 
-<section id="s-frigo" class="on"><div id="frigo"></div></section>
+<section id="s-frigo" class="on">
+  <div class="seg" id="seg" hidden></div>
+  <div id="frigo"></div>
+</section>
 
 <section id="s-courses">
   <div class="add">
@@ -167,7 +185,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <button id="fab" class="on" aria-label="Ajouter un produit">+</button>
 
 <nav>
-  <button data-tab="frigo" class="on">Frigo</button>
+  <button data-tab="frigo" class="on">Stock</button>
   <button data-tab="courses">Courses</button>
   <button data-tab="recettes">Recettes</button>
   <button data-tab="saison">Saison</button>
@@ -185,6 +203,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
       <button class="btn" id="searchBtn">Chercher</button>
     </div>
     <div id="sugg" class="sugg" hidden></div>
+    <label>Fruits et légumes, sans code-barres</label>
+    <button class="btn" id="prodBtn" style="width:100%;padding:11px;font-size:15px">Choisir un fruit ou un légume</button>
+    <div id="prodBox" class="prod" hidden></div>
   </div>
   <label for="code">Code-barres (facultatif)</label>
   <input type="text" id="code" inputmode="numeric" placeholder="3017620422003">
@@ -210,6 +231,27 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
   <button class="btn addonly" id="saveNext" style="width:100%;margin-top:10px;padding:12px;font-size:16px">Ajouter et scanner le suivant</button>
 </dialog>
 
+<!-- Congélation -->
+<dialog id="dlgFreeze">
+  <h2 id="frzTitle">Congeler</h2>
+  <p class="hint">Tous les produits ne se congèlent pas : yaourts, œufs entiers, salade, fromage frais… sont à éviter. Un produit décongelé ne se recongèle jamais.</p>
+  <div id="frzQtyBox">
+    <label for="frzQty">Combien d'unités congeler ?</label>
+    <input type="number" id="frzQty" min="1" inputmode="numeric">
+  </div>
+  <label for="frzDate">À consommer avant (indicatif, à ajuster)</label>
+  <input type="date" id="frzDate">
+  <div class="chips">
+    <button class="btn ghost" data-fz="30">1 mois</button>
+    <button class="btn ghost" data-fz="90">3 mois</button>
+    <button class="btn ghost" data-fz="180">6 mois</button>
+  </div>
+  <div class="foot">
+    <button class="btn ghost" id="frzCancel">Annuler</button>
+    <button class="btn fill" id="frzOk">Congeler</button>
+  </div>
+</dialog>
+
 <!-- Réglages -->
 <dialog id="dlgCfg">
   <h2>Connexion</h2>
@@ -229,7 +271,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Colle ici l'URL de ton déploiement Apps Script (celle qui finit par /exec).
 // L'app ne demandera plus que le code secret, une seule fois par appareil.
-const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUEIoo6Q_QVP5y-JP3SqhpyDYch-0mRlK3LtY7pZh4SGbBW1zxz2JAshdaQ2u35oHBvQ/exec';   // ex. 'https://script.google.com/macros/s/XXXX/exec'
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUEIoo6Q_QVP5y-JP3SqhpyDYch-0mRlK3LtY7pZh4SGbBW1zxz2JAshdaQ2u35oHBvQ/exec';
 
 let CFG = {};
 try { CFG = JSON.parse(localStorage.getItem('frigo_cfg') || '{}'); } catch (e) {}
@@ -313,34 +355,56 @@ function isoPlus(n) {
 /* ---------- Rendu ---------- */
 function render() { renderFrigo(); renderCourses(); }
 
+let filtre = 'all';           // 'all' | 'frais' | 'congele'
+function fmtDate(s) { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; }
+function stateLabel(i) {
+  if (i.etat === 'congele') return i.d !== null && i.d < 0 ? `Congelé : date conseillée dépassée de ${-i.d} j` : `Congelé · avant le ${fmtDate(i.date_peremption)}`;
+  if (i.etat === 'decongele') return `Décongelé · ${whenLabel(i.d)} · ne pas recongeler`;
+  return whenLabel(i.d);
+}
 function renderFrigo() {
-  const items = state.frigo.map(i => ({ ...i, d: daysLeft(i.date_peremption) }))
+  const all = state.frigo.map(i => ({ ...i, etat: i.etat || '', d: daysLeft(i.date_peremption) }))
     .sort((a, b) => (a.d ?? 9999) - (b.d ?? 9999));
-  const urgent = items.filter(i => i.d !== null && i.d <= 3).length;
-  $('summary').innerHTML = !items.length ? 'Le frigo est vide'
+  const nFrozen = all.filter(i => i.etat === 'congele').length;
+  if (!nFrozen && filtre === 'congele') filtre = 'all';
+  const urgent = all.filter(i => i.d !== null && i.d <= 3).length;
+  $('summary').innerHTML = !all.length ? "Rien en stock pour l'instant"
     : urgent ? `<b>${urgent} produit${urgent > 1 ? 's' : ''} à consommer sous 3 jours</b>`
-    : `${items.length} produit${items.length > 1 ? 's' : ''}, rien d'urgent`;
+    : `${all.length} produit${all.length > 1 ? 's' : ''}${nFrozen ? ', dont ' + nFrozen + ' au congélateur' : ''}, rien d'urgent`;
 
+  // Le filtre n'apparaît que si le congélateur est utilisé
+  $('seg').hidden = !nFrozen;
+  $('seg').innerHTML = [['all', 'Tout', all.length], ['frais', 'Frigo', all.length - nFrozen], ['congele', 'Congélateur', nFrozen]]
+    .map(([k, t, n]) => `<button data-f="${k}" class="${filtre === k ? 'on' : ''}">${t} (${n})</button>`).join('');
+
+  const items = all.filter(i => filtre === 'all' || (filtre === 'congele') === (i.etat === 'congele'));
   if (!items.length) {
-    $('frigo').innerHTML = '<div class="empty">Rien dans le frigo pour l\'instant.<br>Appuie sur + pour scanner un produit.</div>';
+    $('frigo').innerHTML = filtre === 'congele' ? '<div class="empty">Rien au congélateur.</div>'
+      : '<div class="empty">Rien dans le frigo pour l\'instant.<br>Appuie sur + pour scanner un produit.</div>';
     return;
   }
   $('frigo').innerHTML = items.map(i => {
     const tone = i.d !== null && i.d <= 1 ? 'urgent' : i.d !== null && i.d <= 3 ? 'soon' : '';
-    const pct = i.d === null ? 100 : Math.max(4, Math.min(100, (i.d / 14) * 100));
-    return `<div class="item ${tone}">
-      <div class="top" data-edit="${esc(i.id)}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
+    const span = i.etat === 'congele' ? 90 : 14;
+    const pct = i.d === null ? 100 : Math.max(4, Math.min(100, (i.d / span) * 100));
+    const kind = i.etat === 'congele' ? 'frozen' : i.etat === 'decongele' ? 'thawed' : '';
+    const id = esc(i.id);
+    const frz = i.etat === 'congele' ? `<button class="btn ghost" data-thaw="${id}">Décongeler</button>`
+      : i.etat === '' ? `<button class="btn ghost" data-freeze="${id}">Congeler</button>` : '';
+    return `<div class="item ${tone} ${kind}">
+      <div class="top" data-edit="${id}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
         ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
         <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}</div></div>
         <div class="qty">×${esc(i.quantite)}</div>
       </div>
       <div class="bar"><i style="width:${i.d === null ? 0 : pct}%"></i></div>
       <div class="row">
-        <span class="when">${whenLabel(i.d)}</span>
+        <span class="when">${esc(stateLabel(i))}</span>
         <div class="acts">
-          <button class="btn ghost" data-edit="${esc(i.id)}">Modifier</button>
-          <button class="btn" data-eat="${esc(i.id)}">Mangé</button>
-          <button class="btn ghost" data-bin="${esc(i.id)}">Jeté</button>
+          <button class="btn ghost" data-edit="${id}">Modifier</button>
+          ${frz}
+          <button class="btn" data-eat="${id}">Mangé</button>
+          <button class="btn ghost" data-bin="${id}">Jeté</button>
         </div>
       </div>
     </div>`;
@@ -649,7 +713,7 @@ let editId = null;     // null = ajout, sinon id du produit modifié
 function resetForm() {
   editId = null; draft = {}; SUGG = []; lastLookup = '';
   ['code', 'nom', 'marque', 'dlc', 'search'].forEach(i => $(i).value = '');
-  $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true;
+  $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true; $('prodBox').hidden = true;
 }
 function openAdd() {
   resetForm();
@@ -701,12 +765,80 @@ async function saveAdd(next) {
   }
 }
 
+/* ---------- Congélation ---------- */
+$('seg').onclick = e => { const b = e.target.closest('[data-f]'); if (b) { filtre = b.dataset.f; renderFrigo(); } };
+
+let frzId = null;
+function openFreeze(id) {
+  const it = state.frigo.find(i => String(i.id) === String(id));
+  if (!it) return;
+  frzId = it.id;
+  const q = Number(it.quantite) || 1;
+  $('frzTitle').textContent = 'Congeler : ' + it.nom;
+  $('frzQtyBox').hidden = q < 2;               // une seule unité : pas de question
+  $('frzQty').max = q; $('frzQty').value = q;
+  $('frzDate').value = isoPlus(90);
+  $('dlgFreeze').showModal();
+}
+document.querySelectorAll('[data-fz]').forEach(b => b.onclick = () => $('frzDate').value = isoPlus(+b.dataset.fz));
+$('frzCancel').onclick = () => $('dlgFreeze').close();
+$('frzOk').onclick = () => {
+  const date = $('frzDate').value;
+  if (!date) { toast('Choisis une date limite.'); return; }
+  const n = Math.max(1, Math.min(Number($('frzQty').max) || 1, Number($('frzQty').value) || 1));
+  $('dlgFreeze').close();
+  toast('Congelé');
+  api('freeze', { id: frzId, n, date_peremption: date });
+};
+
+/* ---------- Fruits et légumes sans code-barres ---------- */
+// Durées indicatives de conservation (en jours) : juste un point de départ, à ajuster selon l'état du produit
+const SHELF = {
+  'Pomme': 21, 'Poire': 7, 'Orange': 14, 'Clémentine': 10, 'Mandarine': 10, 'Kiwi': 10, 'Citron': 21, 'Pamplemousse': 14,
+  'Fraise': 3, 'Rhubarbe': 5, 'Cerise': 4, 'Abricot': 4, 'Framboise': 2, 'Melon': 5, 'Groseille': 3, 'Pêche': 4,
+  'Nectarine': 4, 'Pastèque': 5, 'Prune': 5, 'Myrtille': 5, 'Mûre': 2, 'Figue': 3, 'Raisin': 7, 'Noisette': 90,
+  'Mirabelle': 4, 'Quetsche': 5, 'Coing': 21, 'Noix': 90, 'Châtaigne': 14, 'Banane': 5, 'Avocat': 4,
+  'Carotte': 21, 'Chou': 14, 'Chou-fleur': 7, 'Poireau': 14, 'Endive': 10, 'Épinard': 4, 'Navet': 14, 'Betterave': 14,
+  'Céleri-rave': 21, 'Céleri': 14, 'Panais': 21, 'Potiron': 30, 'Courge': 30, 'Butternut': 30, 'Topinambour': 14,
+  'Radis': 5, 'Laitue': 4, 'Salade': 4, 'Asperge': 4, 'Artichaut': 5, 'Petit pois': 4, 'Fève': 4, 'Blette': 4,
+  'Chou-rave': 14, 'Courgette': 7, 'Haricot vert': 5, 'Concombre': 7, 'Tomate': 7, 'Aubergine': 7, 'Poivron': 7,
+  'Maïs': 3, 'Fenouil': 7, 'Brocoli': 5, 'Champignon': 5, 'Salsifis': 14, 'Pomme de terre': 30, 'Oignon': 30,
+  'Ail': 30, 'Échalote': 30, 'Gingembre': 14,
+};
+const YEAR_ROUND = ['Banane', 'Avocat', 'Pomme de terre', 'Oignon', 'Ail', 'Échalote', 'Carotte', 'Tomate', 'Citron', 'Pomme', 'Champignon', 'Gingembre', 'Salade'];
+
+function renderProd() {
+  const m = new Date().getMonth();
+  const f = SAISON[m].f.split(', '), l = SAISON[m].l.split(', ');
+  const rest = YEAR_ROUND.filter(n => !f.includes(n) && !l.includes(n));
+  const chip = n => `<button class="btn ghost" data-prod="${esc(n)}">${esc(n)}</button>`;
+  $('prodBox').innerHTML = `<h3>Fruits de saison</h3><div class="chips">${f.map(chip).join('')}</div>
+    <h3>Légumes de saison</h3><div class="chips">${l.map(chip).join('')}</div>
+    <h3>Toute l'année</h3><div class="chips">${rest.map(chip).join('')}</div>
+    <p class="hint" style="margin-top:12px">Pas dans la liste ? Tape son nom dans « Produit », plus bas.</p>`;
+}
+function applyProduce(name) {
+  stopScan();
+  const days = SHELF[name] || 7;
+  draft = {}; lastLookup = '';
+  $('code').value = ''; $('nom').value = name; $('marque').value = ''; $('dlc').value = isoPlus(days);
+  $('sugg').hidden = true; $('prodBox').hidden = true;
+  note(`<b>${esc(name)}</b> : date indicative à ${days} jours (sans code-barres). Ajuste-la selon l'état du produit.`);
+  $('found').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+$('prodBtn').onclick = () => {
+  stopScan();
+  if ($('prodBox').hidden) renderProd();
+  $('prodBox').hidden = !$('prodBox').hidden;
+};
+$('prodBox').onclick = e => { const b = e.target.closest('[data-prod]'); if (b) applyProduce(b.dataset.prod); };
+
 /* ---------- Événements ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 's-' + b.dataset.tab));
   $('fab').classList.toggle('on', b.dataset.tab === 'frigo');
-  $('title').textContent = { frigo: 'Frigo', courses: 'Courses', recettes: 'Recettes', saison: 'De saison' }[b.dataset.tab];
+  $('title').textContent = { frigo: 'KOMI', courses: 'Courses', recettes: 'Recettes', saison: 'De saison' }[b.dataset.tab];
   if (b.dataset.tab === 'recettes') { $('summary').textContent = 'Pour finir ce qui périme en premier'; renderRecettes(); }
   else if (b.dataset.tab === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
   else if (b.dataset.tab === 'courses') { $('summary').textContent = 'À acheter'; }
@@ -738,6 +870,16 @@ $('frigo').onkeydown = e => {
 $('frigo').onclick = e => {
   const ed = e.target.closest('[data-edit]');
   if (ed) { openEdit(ed.dataset.edit); return; }
+  const fz = e.target.closest('[data-freeze]'), th = e.target.closest('[data-thaw]');
+  if (fz) { openFreeze(fz.dataset.freeze); return; }
+  if (th) {
+    const it = state.frigo.find(i => String(i.id) === th.dataset.thaw);
+    if (it && confirm(`Décongeler « ${it.nom} » ?\nIl devra être consommé sous 2 jours, sans le recongeler.`)) {
+      api('thaw', { id: it.id });
+      toast('Décongelé : à consommer sous 2 jours');
+    }
+    return;
+  }
   const eat = e.target.closest('[data-eat]'), bin = e.target.closest('[data-bin]');
   if (eat) {
     const it = state.frigo.find(i => String(i.id) === eat.dataset.eat);
