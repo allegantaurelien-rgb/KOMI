@@ -389,7 +389,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <dialog id="dlgImp">
   <h2>Ticket ou commande drive</h2>
   <div id="impStep1">
-    <p class="hint">Envoie le PDF ou la photo du ticket : les produits sont lus automatiquement, et tu vérifies avant d'ajouter. Pour un ticket reçu par mail : appuie longuement sur la pièce jointe, <b>Enregistrer dans Fichiers</b>, puis choisis-la ici.</p>
+    <p class="hint">Envoie le PDF du ticket : il est lu directement sur ton téléphone, sans clé ni envoi de données, et tu vérifies avant d'ajouter. Les photos demandent la clé API Claude. Pour un ticket reçu par mail : appuie longuement sur la pièce jointe, <b>Enregistrer dans Fichiers</b>, puis choisis-la ici.</p>
     <label for="impFile">Fichier (PDF, photo)</label>
     <input type="file" id="impFile" accept="application/pdf,image/*,text/plain,text/html">
     <label for="impText">Ou colle le texte du ticket</label>
@@ -1280,13 +1280,130 @@ async function shrinkImage(file) {
   const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
   return { mime: 'image/jpeg', data: await fileB64(blob) };
 }
+/* Lecture directe d'un ticket PDF ou texte, sur le téléphone (sans clé API, rien n'est envoyé) */
+const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
+let pdfReady = null;
+function loadPdfJs() {
+  if (!pdfReady) pdfReady = (async () => {
+    if (!window.pdfjsLib) await new Promise((ok, ko) => { const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js'; s.onload = ok; s.onerror = () => ko(new Error('pdf.js')); document.head.appendChild(s); });
+    const w = await (await fetch(PDFJS + 'pdf.worker.min.js')).blob();      // le lecteur tourne en arrière-plan, hors de la page
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(w);
+    return true;
+  })().catch(e => { pdfReady = null; throw e; });
+  return pdfReady;
+}
+// PDF -> lignes de texte (les morceaux de texte situés à la même hauteur forment une ligne)
+async function pdfLines(file) {
+  await loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const lines = [];
+  for (let p = 1; p <= Math.min(doc.numPages, 10); p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const rows = [];
+    tc.items.forEach(it => {
+      if (!it.str || !it.str.trim()) return;
+      const y = it.transform[5], x = it.transform[4];
+      let r = rows.find(r => Math.abs(r.y - y) < 2.5);
+      if (!r) rows.push(r = { y, its: [] });
+      r.its.push({ x, w: it.width, s: it.str });
+    });
+    rows.sort((a, b) => b.y - a.y).forEach(r => {
+      r.its.sort((a, b) => a.x - b.x);
+      let s = '', end = null;
+      r.its.forEach(i => { if (end !== null) s += i.x - end > 6 ? '  ' : i.x - end > 0.5 ? ' ' : ''; s += i.s; end = i.x + i.w; });
+      lines.push(s.trim());
+    });
+  }
+  return lines;
+}
+const isoFrom = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${('0' + (t.getMonth() + 1)).slice(-2)}-${('0' + t.getDate()).slice(-2)}`; };
+const nameDate = n => { const m = /(\d{2})(\d{2})(20\d{2})/.exec(String(n || '')); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+
+// Rayon et durée de conservation estimée, d'après la catégorie imprimée sur le ticket puis le nom
+function classifyItem(nom, cat) {
+  const c = norm(cat), n = norm(nom), all = c + ' ' + n;
+  if (/surgel/.test(all) || /\bglaces?\b|sorbet/.test(c)) return ['surgele', 90];
+  if (/eclairage|emballage|hygiene|parfumerie|vaisselle|entretien|droguerie|papeterie|bazar|textile|animalerie|menager|lessive|couche|lingette|\bpile\b|sac poubelle/.test(all)) return ['non_alimentaire', 0];
+  if (/\buht\b/.test(n)) return ['sec', 0];
+  if (/\bbieres?\b|champagn|mousseux|\bvins?\b|spiritueux|cidre|boissons?\b|\beaux?\b|sodas?\b|sirop|alcool/.test(c)) return ['boisson', 0];
+  if (/courge|butternut|potiron/.test(n)) return ['fruits_legumes', 30];
+  if (/legume|fruit/.test(c)) return ['fruits_legumes', 7];
+  if (/biscuit|cereale|poudre|chocolat|conserve|potage|panification|patis|\bpates?\b|produits sales|aperitif|epicerie|\briz\b|farine|sucre|huile|sauce|condiment|\bcafe\b|confiserie|snack|compote|bonbon|confiture|\bthe\b/.test(c)) return ['sec', 0];
+  if (/pain de mie|viennois|brioche/.test(c)) return ['frais', 14];
+  if (/^(pain|boulang)/.test(c.trim())) return ['boulangerie', 2];
+  if (/vol\.|volaille|viande|boucher|poisson|maree|boeuf|porc/.test(c)) return ['frais', 5];
+  if (/charct|traiteur/.test(c)) return ['frais', 12];
+  if (/laits?\b/.test(c)) return ['frais', 7];
+  if (/frais|fromage|cremerie|beurre|oeuf|dessert|yaourt/.test(all)) return ['frais', 14];
+  return ['sec', 0];
+}
+const sentence = s => { s = String(s || '').trim().toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+// Ticket de caisse « une ligne par article » (catégorie, puis « NOM … prix € TVA », puis « 2 x 4,69 EUR »)
+function parseTicket(lines, defDate) {
+  const num = s => parseFloat(String(s).replace(',', '.'));
+  const head = lines.map(l => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const ITEM = /^(.+?)\s+(-?\d{1,4}[.,]\d{2})\s*€\s*(\d{1,2})?$/, QTY = /^(\d+)\s*[xX]\s*(\d+[.,]\d{2})\s*(?:EUR|€)?$/, WGT = /^\d+[.,]\d+\s*kg\s*[xX]\s*\d+[.,]\d{2}/i;
+  const hasSale = head.some(l => /\*+\s*VENTE/i.test(l));
+  let started = !hasSale, cat = '', date = '';
+  const magasin = head[0] && !/\d/.test(head[0]) && !/ticket|commande|facture/i.test(head[0]) ? sentence(head[0]) : '';
+  for (let i = 0; i < head.length; i++) {      // date : ligne « 09/11/26 18:38:01 … »
+    const m = /^(\d{2})\/(\d{2})\/(\d{2}|\d{4})\s+\d{2}:\d{2}/.exec(head[i]);
+    if (m) { date = `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2]}-${m[1]}`; break; }
+  }
+  date = date || defDate || '';
+  const base = date && Math.abs(daysLeft(date)) < 60 ? date : isoPlus(0);
+  const articles = [];
+  for (let i = 0; i < head.length; i++) {
+    const l = head[i];
+    if (/\*+\s*VENTE/i.test(l)) { started = true; continue; }
+    if (!started) continue;
+    if (/^(TOTAL|SOUS-TOTAL|RESTE A PAYER)/i.test(l) || /REDUCTIONS/i.test(l)) { if (articles.length) break; else continue; }
+    const m = ITEM.exec(l);
+    if (m) {
+      let q = 1, unit = num(m[2]), j = i + 1;
+      while (j < head.length) {                 // lignes de détail : « 2 x 4,69 EUR », « Pesée manuelle », « 0,689 kg x 3,99 €/kg »
+        const nx = head[j], mq = QTY.exec(nx);
+        if (mq) { q = +mq[1]; unit = num(mq[2]); j++; continue; }
+        if (WGT.test(nx) || /^pes[ée]e/i.test(nx)) { j++; continue; }
+        break;
+      }
+      i = j - 1;
+      if (unit < 0 || !isFinite(unit)) continue;
+      const [rayon, jours] = classifyItem(m[1], cat);
+      articles.push({ nom: sentence(m[1]), quantite: Math.max(1, Math.min(99, q)), prix: Math.round(unit * 100) / 100, rayon, date_peremption: jours ? isoFrom(base, jours) : '' });
+    } else if (/^[A-ZÀ-ÝŒ0-9 .'()\/&+-]{3,}$/.test(l) && !/\d[.,]\d{2}/.test(l)) cat = l;      // ligne de catégorie
+  }
+  return { magasin, date, articles, local: true };
+}
+
+function showImp(rec) {
+  IMP = rec;
+  IMP.articles = IMP.articles.filter(a => a.rayon !== 'non_alimentaire').map(a => ({ ...a, keep: !['sec', 'boisson'].includes(a.rayon) }));
+  if (!IMP.articles.length) { $('impErr').textContent = 'Aucun produit alimentaire reconnu.'; return false; }
+  $('impStep1').hidden = true; $('impStep2').hidden = false;
+  renderImp();
+  return true;
+}
 async function impAnalyse() {
   const f = $('impFile').files[0], txt = $('impText').value.trim();
   const err = m => { $('impErr').textContent = m; };
+  const reset = () => { $('impGo').disabled = false; $('impGo').textContent = 'Analyser'; };
   err('');
   if (!f && !txt) { err('Choisis un fichier ou colle le texte du ticket.'); return; }
-  const payload = {};
   $('impGo').disabled = true; $('impGo').textContent = 'Lecture en cours…';
+  // 1) lecture directe sur le téléphone : gratuite, instantanée, rien n'est envoyé
+  let local = null;
+  try {
+    if (f && f.type === 'application/pdf' && f.size <= 8 * 1024 * 1024) local = parseTicket(await pdfLines(f), nameDate(f.name));
+    else if (f && /^text\//.test(f.type)) {
+      let t = await f.text();
+      if (f.type === 'text/html') t = new DOMParser().parseFromString(t, 'text/html').body.innerText || '';
+      local = parseTicket(t.split(/\r?\n/), nameDate(f.name));
+    } else if (!f) local = parseTicket(txt.split(/\r?\n/), '');
+  } catch (e) { console.warn('lecture directe impossible', e); }
+  if (local && local.articles.length >= 3) { reset(); showImp(local); return; }
+  // 2) sinon, lecture avancée par Claude (clé API nécessaire côté Apps Script)
+  const payload = {};
   try {
     if (f) {
       if (f.type === 'application/pdf') {
@@ -1305,19 +1422,18 @@ async function impAnalyse() {
       } else throw new Error('Format non pris en charge : PDF, photo ou texte.');
     }
     if (txt) payload.texte = ((payload.texte ? payload.texte + '\n' : '') + txt).slice(0, 30000);
-  } catch (e) { err(e.message || 'Fichier illisible.'); $('impGo').disabled = false; $('impGo').textContent = 'Analyser'; return; }
+  } catch (e) { err(e.message || 'Fichier illisible.'); reset(); return; }
   const r = await api('receipt', payload);
-  $('impGo').disabled = false; $('impGo').textContent = 'Analyser';
-  if (!r || !r.receipt) { err("La lecture a échoué (le message est affiché en bas de l'écran). Réessaie avec une photo plus nette, ou colle le texte."); return; }
-  IMP = r.receipt;
-  IMP.articles = IMP.articles.filter(a => a.rayon !== 'non_alimentaire').map(a => ({ ...a, keep: !['sec', 'boisson'].includes(a.rayon) }));
-  if (!IMP.articles.length) { err('Aucun produit alimentaire reconnu.'); return; }
-  $('impStep1').hidden = true; $('impStep2').hidden = false;
-  renderImp();
+  reset();
+  if (!r || !r.receipt) {
+    err("Ce ticket n'a pas été reconnu en lecture directe, et la lecture avancée (Claude) n'est pas disponible : voir le message en bas de l'écran. Les PDF de ticket de caisse « une ligne par article » passent sans clé ; pour les photos, il faut la clé API (voir le LISEZMOI).");
+    return;
+  }
+  showImp(r.receipt);
 }
 function renderImp() {
   const n = IMP.articles.length;
-  $('impHead').innerHTML = `${esc(IMP.magasin || 'Ticket')}${IMP.date ? ' · ' + esc(fmtDate(IMP.date)) : ''} · ${n} produit${n > 1 ? 's' : ''}. Vérifie, corrige, décoche ce que tu ne veux pas suivre (épicerie et boissons sont décochées au départ).`;
+  $('impHead').innerHTML = `${esc(IMP.magasin || 'Ticket')}${IMP.date ? ' · ' + esc(fmtDate(IMP.date)) : ''} · ${n} produit${n > 1 ? 's' : ''}. Vérifie, corrige, décoche ce que tu ne veux pas suivre (épicerie et boissons sont décochées au départ). Les dates de péremption sont des estimations à ajuster avec celles de tes emballages.`;
   $('impList').innerHTML = IMP.articles.map((a, i) => `<div class="imp ${a.keep ? '' : 'off'}" data-i="${i}">
       <input type="checkbox" data-f="keep" ${a.keep ? 'checked' : ''} aria-label="Ajouter ${esc(a.nom)}">
       <div class="impf">
