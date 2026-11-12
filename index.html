@@ -108,6 +108,53 @@ input[type=text],input[type=number],input[type=date],input[type=url],input[type=
 .rec ol{padding-left:20px;margin:10px 0 14px;line-height:1.5;font-size:16px}
 .rec-when{color:var(--muted);font-size:13px;margin-top:14px}
 
+/* Synchro, réglages */
+header{position:relative}
+#gear{position:absolute;right:20px;top:calc(20px + env(safe-area-inset-top));width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:transparent;font-size:20px;line-height:1;cursor:pointer;color:var(--muted)}
+.sync{display:block;border:0;background:none;padding:0;margin:4px 0 0;font-size:13px;color:var(--muted);text-align:left;cursor:default;font-weight:600}
+.sync:empty{display:none}
+.sync.ok{color:var(--fresh)} .sync.warn{color:#A06F00;cursor:pointer} .sync.bad{color:var(--urgent);cursor:pointer}
+.sync u{text-underline-offset:2px}
+.opened:not(.soon):not(.urgent) .bar i{background:#8AA79D}
+.opened:not(.soon):not(.urgent) .when{color:var(--spruce)}
+.aisle{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:18px 0 2px}
+.chk{display:inline-flex;align-items:center;gap:8px;margin:0 16px 0 0;font-weight:600;font-size:15px}
+.chk input{width:20px;height:20px;accent-color:var(--spruce)}
+.editonly{display:none}.editing .editonly{display:block}
+textarea{width:100%;min-height:90px;padding:12px 14px;font:inherit;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
+.menu{display:grid;gap:8px;margin-top:6px}
+.menu .btn{width:100%;padding:12px;font-size:15px;text-align:left}
+.errline{color:var(--urgent);font-size:14px;margin:8px 0 0;min-height:1em}
+
+/* Import d'un ticket */
+.imp{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.imp.off{opacity:.55}
+.imp > input[type=checkbox]{width:22px;height:22px;accent-color:var(--spruce);flex:none;margin-top:10px}
+.impf{flex:1;min-width:0}
+.improw{display:grid;grid-template-columns:64px 1fr 84px;gap:6px;margin-top:6px}
+.imp input[type=text],.imp input[type=number],.imp input[type=date]{padding:8px 10px;font-size:15px}
+
+/* Planning et bilan */
+.day h3{font-size:16px;margin:18px 0 2px}
+.meal{padding:10px 0;border-bottom:1px solid var(--line)}
+.meal .mt{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.meal .mt b{font-size:17px;font-weight:600}
+.meal small{color:var(--muted);font-size:13px}
+.meal p{margin:4px 0 0;font-size:14px;line-height:1.4}
+.meal .x{background:none;border:0;font-size:20px;color:var(--muted);cursor:pointer;padding:0 4px}
+.plan-h{font-size:18px;margin:22px 0 0}
+.stat-hero{background:var(--paper);border-radius:14px;padding:16px;margin-bottom:16px;line-height:1.5;font-size:15px}
+.stat-hero .big{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.stat-hero small{color:var(--muted)}
+.mrow{display:grid;grid-template-columns:48px 1fr 64px;gap:10px;align-items:center;padding:6px 0;font-size:14px}
+.mrow span:last-child{text-align:right;color:var(--muted)}
+.mbar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--line)}
+.mbar i{display:block;height:100%}
+.mbar .g{background:var(--fresh)} .mbar .r{background:var(--urgent)}
+.top-list{margin:0;padding:0;list-style:none}
+.top-list li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:16px}
+.top-list small{color:var(--muted)}
+
 /* Navigation */
 /* Menu en bas de l'écran (plus de badge d'hébergeur qui gêne sur GitHub Pages) */
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--spruce);
@@ -154,8 +201,10 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <body>
 
 <header>
+  <button id="gear" aria-label="Réglages">⚙</button>
   <h1 id="title">KOMI</h1>
   <p id="summary"></p>
+  <button id="sync" class="sync" type="button"></button>
 </header>
 
 <section id="s-frigo" class="on">
@@ -168,6 +217,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <input type="text" id="newCourse" placeholder="Ajouter un article" enterkeyhint="done">
     <button class="btn fill" id="addCourse">Ajouter</button>
   </div>
+  <div id="freq"></div>
   <div id="courses"></div>
   <p><button class="btn ghost" id="clearDone">Vider les articles cochés</button></p>
 </section>
@@ -181,6 +231,11 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 </section>
 
 <section id="s-recettes">
+  <div class="seg" id="repSeg" style="margin-bottom:14px">
+    <button data-rs="idees" class="on">Idées du jour</button>
+    <button data-rs="plan">Planning</button>
+  </div>
+  <div id="repIdees">
   <div class="rec-form">
     <label for="personnes">Pour combien de personnes ?</label>
     <input type="number" id="personnes" min="1" max="12" value="4" inputmode="numeric">
@@ -189,6 +244,26 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <button class="btn fill" id="getRec" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Proposer des recettes</button>
   </div>
   <div id="recettes"></div>
+  </div>
+  <div id="repPlan" hidden>
+    <div class="rec-form">
+      <label>Combien de jours ?</label>
+      <div class="seg" id="planDays"><button data-pd="3">3 jours</button><button data-pd="5" class="on">5 jours</button><button data-pd="7">7 jours</button></div>
+      <label>Quels repas ?</label>
+      <div><label class="chk"><input type="checkbox" id="mMidi"> Midi</label><label class="chk"><input type="checkbox" id="mSoir" checked> Soir</label></div>
+      <label for="planPers">Pour combien de personnes ?</label>
+      <input type="number" id="planPers" min="1" max="12" value="4" inputmode="numeric">
+      <label for="planEnvie">Une contrainte ? (facultatif)</label>
+      <input type="text" id="planEnvie" placeholder="sans porc, un repas végétarien…" maxlength="120">
+      <button class="btn fill" id="getPlan" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Proposer un planning</button>
+    </div>
+    <div id="planDraft"></div>
+    <div id="planning"></div>
+  </div>
+</section>
+
+<section id="s-bilan">
+  <div id="bilan"></div>
 </section>
 
 <button id="fab" class="on" aria-label="Ajouter un produit">+</button>
@@ -196,8 +271,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <nav>
   <button data-tab="frigo" class="on">Stock</button>
   <button data-tab="courses">Courses</button>
-  <button data-tab="recettes">Recettes</button>
+  <button data-tab="recettes">Repas</button>
   <button data-tab="saison">Saison</button>
+  <button data-tab="bilan">Bilan</button>
 </nav>
 
 <!-- Ajout produit -->
@@ -206,6 +282,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
   <div id="reader" hidden><video id="cam" playsinline muted autoplay></video><div class="guide"></div></div>
   <div class="addonly">
     <button class="btn fill" id="scanBtn" style="width:100%;padding:12px">Scanner un code-barres</button>
+    <button class="btn" id="impBtn" style="width:100%;padding:11px;margin-top:8px;font-size:15px">Importer un ticket ou une commande drive</button>
     <label for="search">Ou chercher par nom</label>
     <div class="searchrow">
       <input type="text" id="search" placeholder="Yaourt nature Danone" enterkeyhint="search">
@@ -232,6 +309,13 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <button class="btn ghost" data-plus="7">+1 sem</button>
     <button class="btn ghost" data-plus="14">+2 sem</button>
     <button class="btn ghost" data-plus="30">+1 mois</button>
+  </div>
+  <label for="prix">Prix d'une unité, en € (facultatif)</label>
+  <input type="number" id="prix" min="0" step="0.01" inputmode="decimal" placeholder="1,20">
+  <div class="editonly">
+    <label for="minStock">Toujours en avoir au moins (facultatif)</label>
+    <input type="number" id="minStock" min="0" max="99" inputmode="numeric" placeholder="0">
+    <p class="hint" style="margin-top:6px">Quand le stock passe sous ce nombre, le produit rejoint la liste de courses. 0 : désactivé.</p>
   </div>
   <div class="fiche" id="ficheBox" hidden>
     <button class="btn" id="ficheBtn" style="width:100%;padding:11px;font-size:15px">Voir la fiche produit (Open Food Facts)</button>
@@ -277,11 +361,76 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
   <div class="foot"><button class="btn fill" id="saveCfg">Enregistrer</button></div>
 </dialog>
 
+<!-- Ouvrir / jeter -->
+<dialog id="dlgAct">
+  <h2 id="actTitle"></h2>
+  <p class="hint" id="actHint"></p>
+  <div id="actQtyBox">
+    <label for="actQty">Combien d'unités ?</label>
+    <input type="number" id="actQty" min="1" inputmode="numeric">
+  </div>
+  <div id="actDaysBox">
+    <label for="actDays">Se garde combien de jours une fois ouvert ?</label>
+    <input type="number" id="actDays" min="0" max="365" inputmode="numeric">
+    <div class="chips">
+      <button class="btn ghost" data-ad="1">1 j</button><button class="btn ghost" data-ad="2">2 j</button>
+      <button class="btn ghost" data-ad="3">3 j</button><button class="btn ghost" data-ad="5">5 j</button>
+      <button class="btn ghost" data-ad="7">1 sem</button><button class="btn ghost" data-ad="14">2 sem</button>
+    </div>
+    <p class="hint" id="actPreview" style="margin-top:10px"></p>
+  </div>
+  <div class="foot">
+    <button class="btn ghost" id="actCancel">Annuler</button>
+    <button class="btn fill" id="actOk">OK</button>
+  </div>
+</dialog>
+
+<!-- Import d'un ticket -->
+<dialog id="dlgImp">
+  <h2>Ticket ou commande drive</h2>
+  <div id="impStep1">
+    <p class="hint">Envoie le PDF ou la photo du ticket : les produits sont lus automatiquement, et tu vérifies avant d'ajouter. Pour un ticket reçu par mail : appuie longuement sur la pièce jointe, <b>Enregistrer dans Fichiers</b>, puis choisis-la ici.</p>
+    <label for="impFile">Fichier (PDF, photo)</label>
+    <input type="file" id="impFile" accept="application/pdf,image/*,text/plain,text/html">
+    <label for="impText">Ou colle le texte du ticket</label>
+    <textarea id="impText" placeholder="Copie-colle le contenu du mail de confirmation…"></textarea>
+    <p class="errline" id="impErr" role="alert"></p>
+    <div class="foot">
+      <button class="btn ghost" id="impCancel">Annuler</button>
+      <button class="btn fill" id="impGo">Analyser</button>
+    </div>
+  </div>
+  <div id="impStep2" hidden>
+    <p class="hint" id="impHead"></p>
+    <div id="impList"></div>
+    <div class="foot">
+      <button class="btn ghost" id="impBack">Retour</button>
+      <button class="btn fill" id="impAdd">Ajouter</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Réglages -->
+<dialog id="dlgSet">
+  <h2>Réglages</h2>
+  <div class="found note" id="setStatus"></div>
+  <div class="menu">
+    <button class="btn" id="setCheck">Vérifier mes données</button>
+    <button class="btn" id="setRepair">Réparer les données automatiquement</button>
+    <button class="btn" id="setPin">Changer le code secret</button>
+  </div>
+  <div id="setOut" style="margin-top:12px"></div>
+  <div class="foot"><button class="btn fill" id="setClose">Fermer</button></div>
+</dialog>
+
 <div id="toast" popover="manual" role="status"></div>
 
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Stockage du téléphone : jamais bloquant (mode privé, données corrompues…)
+function lsGet(k, def) { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 // Colle ici l'URL de ton déploiement Apps Script (celle qui finit par /exec).
 // L'app ne demandera plus que le code secret, une seule fois par appareil.
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzUEIoo6Q_QVP5y-JP3SqhpyDYch-0mRlK3LtY7pZh4SGbBW1zxz2JAshdaQ2u35oHBvQ/exec';
@@ -304,39 +453,81 @@ function openCfg() {
   $('cfgPin').value = '';
   if (!$('dlgCfg').open) $('dlgCfg').showModal();
 }
-let state = JSON.parse(localStorage.getItem('frigo_state') || '{"frigo":[],"courses":[]}');
+let state = { frigo: [], courses: [], produits: [], planning: [] };
+try {
+  const s0 = JSON.parse(lsGet('frigo_state', 'null'));
+  if (s0 && Array.isArray(s0.frigo) && Array.isArray(s0.courses)) state = { ...state, ...s0 };
+} catch (e) {}
+state.produits = Array.isArray(state.produits) ? state.produits : [];
+state.planning = Array.isArray(state.planning) ? state.planning : [];
 let draft = {};          // infos Open Food Facts du produit en cours d'ajout
 
 /* ---------- API ---------- */
+const WANT_V = 3;                                   // version de Code.gs attendue par cette page
+const LONG = { recipes: 1, receipt: 1, plan: 1 };   // appels longs (Claude) : hors file d'attente
+let sync = { ok: null, at: 0, msg: '', warn: 0, ver: null }, WARN = [];
+function setSync(p) { Object.assign(sync, p); renderSync(); }
+function renderSync() {
+  const el = $('sync'); if (!el) return;
+  const hh = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  let html = '', cls = '', act = '';
+  if (sync.ok === false) { html = `⚠ ${esc(sync.msg)}${sync.at ? ' · données de ' + hh(sync.at) : ''} · <u>Réessayer</u>`; cls = 'bad'; act = 'retry'; }
+  else if (sync.ver !== null && sync.ver < WANT_V) { html = `⚠ Code.gs pas à jour (v${sync.ver}, la v${WANT_V} est attendue) · <u>Détails</u>`; cls = 'bad'; act = 'cfg'; }
+  else if (sync.warn) { html = `⚠ ${sync.warn} ligne${sync.warn > 1 ? 's' : ''} du Sheet à vérifier · <u>Voir</u>`; cls = 'warn'; act = 'cfg'; }
+  else if (sync.at) { html = `✓ Synchronisé à ${hh(sync.at)}`; cls = 'ok'; }
+  el.className = 'sync ' + cls; el.dataset.act = act; el.innerHTML = html;
+}
 // Les appels partent l'un après l'autre : on peut enchaîner les scans sans perdre de produit
 let chain = Promise.resolve();
 function api(action, data = {}) {
-  if (action === 'recipes') return apiRaw(action, data);   // long : ne bloque pas les autres actions
+  if (LONG[action] || action === 'stats') return apiRaw(action, data);
   const p = chain.then(() => apiRaw(action, data));
   chain = p.catch(() => {});
   return p;
 }
+function failApi(action, short, long) {
+  setSync({ ok: false, msg: short });
+  if (action !== 'list') toast(long || short);
+}
 async function apiRaw(action, data) {
   if (!CFG.url || !CFG.pin) { openCfg(); return null; }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), LONG[action] ? 120000 : 30000);
+  let res, txt;
   try {
     // Corps en texte brut : évite la requête préliminaire CORS refusée par Apps Script
-    const res = await fetch(CFG.url, { method: 'POST', body: JSON.stringify({ action, token: CFG.pin, ...data }) });
-    const txt = await res.text();
-    let json;
-    try { json = JSON.parse(txt); }
-    catch (e) { toast("L'API ne répond pas : ouvre le déploiement à « Tout le monde » et publie une nouvelle version."); return null; }
-    if (json.error) {
-      toast(json.error);
-      if (json.error === 'Code incorrect') openCfg();   // on redemande le code
-      return null;
-    }
-    if (json.recettes) return json;          // réponse « recettes » : ne remplace pas le frigo
-    state = json;
-    try { localStorage.setItem('frigo_state', JSON.stringify(state)); } catch (e) {}
-    render();
-    return json;
-  } catch (e) { toast('Pas de connexion à l\'API. Vérifie l\'URL en /exec et ta connexion.'); return null; }
+    res = await fetch(CFG.url, { method: 'POST', body: JSON.stringify({ action, token: CFG.pin, ...data }), signal: ctl.signal });
+    txt = await res.text();
+  } catch (e) {
+    if (e && e.name === 'AbortError') failApi(action, "L'API met trop de temps à répondre", "L'API met trop de temps à répondre : réessaie dans un instant.");
+    else failApi(action, "Pas de connexion à l'API", "Pas de connexion à l'API. Vérifie ta connexion et l'URL en /exec.");
+    return null;
+  } finally { clearTimeout(timer); }
+  let json;
+  try { json = JSON.parse(txt); }
+  catch (e) {
+    const login = /<html|accounts\.google|sign in|se connecter/i.test(String(txt).slice(0, 800));
+    failApi(action, login ? 'Google bloque l\'accès à l\'API' : `Réponse illisible de l'API (HTTP ${res.status})`,
+      login ? "Google bloque l'accès : le déploiement doit être sur « Tout le monde », puis publie une nouvelle version."
+        : "L'API ne répond pas correctement : publie une nouvelle version du déploiement.");
+    return null;
+  }
+  if (json.error) {
+    toast(json.error);
+    if (json.error === 'Code incorrect') { setSync({ ok: false, msg: 'Code secret incorrect' }); openCfg(); }
+    else if (action !== 'list' && !LONG[action] && action !== 'stats') api('list');   // l'écran se remet à jour (ex. produit déjà supprimé)
+    return null;
+  }
+  if (!json.frigo) { setSync({ ok: true, at: Date.now() }); return json; }   // recettes, ticket, planning, bilan : ne remplacent pas le stock
+  state = { frigo: arr(json.frigo), courses: arr(json.courses), produits: arr(json.produits), planning: arr(json.planning) };
+  WARN = Array.isArray(json.warnings) ? json.warnings.map(String) : [];
+  lsSet('frigo_state', JSON.stringify(state));
+  setSync({ ok: true, at: Date.now(), warn: WARN.length, ver: json.v === undefined ? 0 : json.v });
+  render();
+  if (sync.ver < WANT_V && !apiRaw.warned) { apiRaw.warned = 1; toast('Code.gs est ancien : republie-le (voir le LISEZMOI).'); }
+  return json;
 }
+const arr = x => Array.isArray(x) ? x.filter(o => o && typeof o === 'object') : [];
 
 function toast(msg) {
   const t = $('toast'); t.textContent = msg;
@@ -366,7 +557,12 @@ function isoPlus(n) {
 }
 
 /* ---------- Rendu ---------- */
-function render() { renderFrigo(); renderCourses(); }
+let TAB = 'frigo';
+function render() {
+  const run = (f, name) => { try { f(); } catch (e) { console.error(name, e); setSync({ ok: false, msg: `Erreur d'affichage (${name})` }); } };
+  run(renderFrigo, 'stock'); run(renderCourses, 'courses'); run(renderPlanning, 'planning');
+  if (TAB === 'bilan') run(renderBilan, 'bilan');
+}
 
 let filtre = 'all';           // 'all' | 'frais' | 'congele'
 function fmtDate(s) { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; }
@@ -384,10 +580,17 @@ function stateLabel(i) {
   const dt = dateLabel(i.date_peremption);
   if (i.etat === 'congele') return i.d !== null && i.d < 0 ? `Congelé : date conseillée dépassée de ${-i.d} j` : `Congelé · avant le <b>${esc(fmtDate(i.date_peremption))}</b>`;
   if (i.etat === 'decongele') return `Décongelé${dt ? ' · <b>' + esc(dt) + '</b>' : ''} · ne pas recongeler`;
+  if (i.etat === 'ouvert') {
+    const o = fmtDate(i.date_ouverture).slice(0, 5);
+    return `Ouvert${o ? ' le ' + esc(o) : ''}${dt ? ' · <b>' + esc(dt) + '</b>' : ''} · ${esc(whenLabel(i.d))}`;
+  }
   return dt ? `<b>${esc(dt)}</b> · ${esc(whenLabel(i.d))}` : esc(whenLabel(i.d));
 }
 // Un même produit (même code-barres, sinon même nom) forme un groupe : ses lignes restent côte à côte, triées par date
 const keyOf = i => String(i.code_barres || '').trim() || String(i.nom || '').trim().toLowerCase();
+const prodOf = key => state.produits.find(p => String(p.cle) === key);
+function stockOfKey(key) { return state.frigo.filter(i => keyOf(i) === key).reduce((s, i) => s + (Number(i.quantite) || 0), 0); }
+
 function renderFrigo() {
   const all = state.frigo.map(i => ({ ...i, etat: i.etat || '', d: daysLeft(i.date_peremption) }));
   const first = {};
@@ -396,7 +599,7 @@ function renderFrigo() {
   const nFrozen = all.filter(i => i.etat === 'congele').length;
   if (!nFrozen && filtre === 'congele') filtre = 'all';
   const urgent = all.filter(i => i.d !== null && i.d <= 3).length;
-  $('summary').innerHTML = !all.length ? "Rien en stock pour l'instant"
+  if (TAB === 'frigo') $('summary').innerHTML = !all.length ? "Rien en stock pour l'instant"
     : urgent ? `<b>${urgent} produit${urgent > 1 ? 's' : ''} à consommer sous 3 jours</b>`
     : `${all.length} produit${all.length > 1 ? 's' : ''}${nFrozen ? ', dont ' + nFrozen + ' au congélateur' : ''}, rien d'urgent`;
 
@@ -411,46 +614,76 @@ function renderFrigo() {
       : '<div class="empty">Rien dans le frigo pour l\'instant.<br>Appuie sur + pour scanner un produit.</div>';
     return;
   }
+  let broken = 0;
   $('frigo').innerHTML = items.map((i, n) => {
-    const tone = i.d !== null && i.d <= 1 ? 'urgent' : i.d !== null && i.d <= 3 ? 'soon' : '';
-    const span = i.etat === 'congele' ? 90 : 14;
-    const pct = i.d === null ? 100 : Math.max(4, Math.min(100, (i.d / span) * 100));
-    const kind = i.etat === 'congele' ? 'frozen' : i.etat === 'decongele' ? 'thawed' : '';
-    const again = n > 0 && keyOf(items[n - 1]) === keyOf(i) ? 'again' : '';      // même produit que la ligne précédente
-    const id = esc(i.id);
-    const frz = i.etat === 'congele' ? `<button class="btn ghost" data-thaw="${id}">Décongeler</button>`
-      : i.etat === '' ? `<button class="btn ghost" data-freeze="${id}">Congeler</button>` : '';
-    return `<div class="item ${tone} ${kind} ${again}">
-      <div class="top" data-edit="${id}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
-        ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
-        <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}</div></div>
-        <div class="qty">×${esc(i.quantite)}</div>
-      </div>
-      <div class="bar"><i style="width:${i.d === null ? 0 : pct}%"></i></div>
-      <div class="row">
-        <span class="when">${stateLabel(i)}</span>
-        <div class="acts">
-          <button class="btn ghost" data-edit="${id}">Modifier</button>
-          ${frz}
-          <button class="btn" data-eat="${id}">Mangé</button>
-          <button class="btn ghost" data-bin="${id}">Jeté</button>
+    try {
+      const tone = i.d !== null && i.d <= 1 ? 'urgent' : i.d !== null && i.d <= 3 ? 'soon' : '';
+      const span = i.etat === 'congele' ? 90 : 14;
+      const pct = i.d === null ? 100 : Math.max(4, Math.min(100, (i.d / span) * 100));
+      const kind = i.etat === 'congele' ? 'frozen' : i.etat === 'decongele' ? 'thawed' : i.etat === 'ouvert' ? 'opened' : '';
+      const again = n > 0 && keyOf(items[n - 1]) === keyOf(i) ? 'again' : '';      // même produit que la ligne précédente
+      const id = esc(i.id);
+      const opn = i.etat === '' ? `<button class="btn ghost" data-open="${id}">Ouvrir</button>` : '';
+      const frz = i.etat === 'congele' ? `<button class="btn ghost" data-thaw="${id}">Décongeler</button>`
+        : (i.etat === '' || i.etat === 'ouvert') ? `<button class="btn ghost" data-freeze="${id}">Congeler</button>` : '';
+      return `<div class="item ${tone} ${kind} ${again}">
+        <div class="top" data-edit="${id}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
+          ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
+          <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}</div></div>
+          <div class="qty">×${esc(i.quantite)}</div>
         </div>
-      </div>
-    </div>`;
-  }).join('');
+        <div class="bar"><i style="width:${i.d === null ? 0 : pct}%"></i></div>
+        <div class="row">
+          <span class="when">${stateLabel(i)}</span>
+          <div class="acts">
+            <button class="btn ghost" data-edit="${id}">Modifier</button>
+            ${opn}${frz}
+            <button class="btn" data-eat="${id}">Mangé</button>
+            <button class="btn ghost" data-bin="${id}">Jeté</button>
+          </div>
+        </div>
+      </div>`;
+    } catch (e) { broken++; return ''; }       // une ligne illisible ne bloque pas les autres
+  }).join('') + (broken ? `<p class="hint">${broken} ligne${broken > 1 ? 's' : ''} n'ont pas pu s'afficher : ouvre les réglages ⚙ pour vérifier les données.</p>` : '');
 }
 
-function renderCourses() {
-  const list = [...state.courses].sort((a, b) => Number(a.fait === true || a.fait === 'TRUE') - Number(b.fait === true || b.fait === 'TRUE'));
-  if (!list.length) { $('courses').innerHTML = '<div class="empty">La liste est vide.</div>'; return; }
-  $('courses').innerHTML = list.map(c => {
-    const done = c.fait === true || c.fait === 'TRUE';
-    return `<div class="course ${done ? 'done' : ''}">
-      <input type="checkbox" ${done ? 'checked' : ''} data-tog="${esc(c.id)}" aria-label="Coché">
+/* Courses rangées par rayon */
+const norm = s => String(s || '').toLowerCase().replace(/œ/g, 'oe').normalize('NFD').replace(/[̀-ͯ]/g, '');
+const rx = w => new RegExp('\\b(?:' + w + ')(?:s|x)?\\b');
+const AISLE_RX = [        // l'ordre compte : le premier rayon qui correspond gagne
+  ['Surgelés', rx('surgele|congele|glace|sorbet|frites|poisson pane|nuggets?')],
+  ['Hygiène & maison', rx('papier toilette|papier wc|pq|essuie[- ]tout|lessive|vaisselle|savon|shampoing|shampooing|dentifrice|brosse a dents|eponge|sac poubelle|poubelle|nettoyant|javel|mouchoir|couche|deodorant|gel douche|coton|rasoir|adoucissant|detergent|lingette|pile|ampoule|sopalin')],
+  ['Boissons', rx('eau|jus|soda|coca|limonade|biere|vin|cidre|sirop|boisson|perrier|evian|orangina|ice tea|tonic|champagne|whisky|rhum|biere')],
+  ['Fruits & légumes', rx('pomme|poire|banane|orange|clementine|mandarine|citron|kiwi|fraise|framboise|cerise|peche|abricot|raisin|melon|pasteque|ananas|mangue|avocat|tomate|carotte|courgette|salade|laitue|mache|roquette|oignon|ail|echalote|pomme de terre|patate|champignon|poireau|concombre|poivron|aubergine|haricot vert|brocoli|chou|chou-fleur|epinard|radis|potiron|courge|butternut|betterave|celeri|fenouil|legume|fruit|persil|basilic|ciboulette|coriandre|menthe|gingembre|endive')],
+  ['Boulangerie', rx('pain|baguette|brioche|croissant|viennoiserie|pain de mie|pain au chocolat|boulangerie|burger bun|wrap')],
+  ['Boucherie & poisson', rx('poulet|boeuf|steak|hache|porc|jambon|saucisse|lardon|viande|dinde|veau|agneau|saumon|poisson|crevette|merguez|charcuterie|saucisson|bacon|cabillaud|escalope|roti|cote|filet|knack|chorizo|magret')],
+  ['Crémerie', rx('lait|yaourt|yogourt|fromage|beurre|creme|oeuf|emmental|mozzarella|gruyere|camembert|skyr|margarine|comte|parmesan|chevre|feta|raclette|petit suisse|fromage blanc|dessert lacte|flan')],
+  ['Épicerie', rx('pate|spaghetti|riz|farine|sucre|huile|sel|poivre|conserve|cafe|the|cereale|biscuit|chocolat|confiture|miel|sauce|ketchup|mayonnaise|moutarde|vinaigre|semoule|lentille|ble|chips|pizza|nutella|compote|bocal|thon|sardine|epice|bouillon|levure|muesli|gateau|bonbon|cacahuete|tortilla|puree|soupe|lait de coco|olive|cornichon|pois chiche|haricot|mais')],
+];
+const AISLE_ORDER = ['Fruits & légumes', 'Boulangerie', 'Boucherie & poisson', 'Crémerie', 'Épicerie', 'Boissons', 'Surgelés', 'Hygiène & maison', 'Autre'];
+function aisleOf(name) { const n = norm(name); for (const [a, r] of AISLE_RX) if (r.test(n)) return a; return 'Autre'; }
+
+function courseRow(c) {
+  return `<div class="course ${c.done ? 'done' : ''}">
+      <input type="checkbox" ${c.done ? 'checked' : ''} data-tog="${esc(c.id)}" aria-label="Coché">
       <span>${esc(c.article)}${Number(c.quantite) > 1 ? ' ×' + esc(c.quantite) : ''}</span>
       <button class="x" data-del="${esc(c.id)}" aria-label="Supprimer">×</button>
     </div>`;
-  }).join('');
+}
+function renderCourses() {
+  const list = state.courses.map(c => ({ ...c, done: c.fait === true || c.fait === 'TRUE' }));
+  const todo = list.filter(c => !c.done), done = list.filter(c => c.done);
+  const have = new Set(todo.map(c => norm(c.article).trim()));
+  const fq = ((STATS && STATS.frequents) || []).filter(f => !have.has(norm(f.nom).trim()) && !state.frigo.some(i => norm(i.nom).trim() === norm(f.nom).trim())).slice(0, 8);
+  $('freq').innerHTML = fq.length ? `<h3 class="aisle">Souvent rachetés</h3><div class="chips freq">${fq.map(f => `<button class="btn ghost" data-fq="${esc(f.nom)}">+ ${esc(f.nom)}</button>`).join('')}</div>` : '';
+  if (!list.length) { $('courses').innerHTML = '<div class="empty">La liste est vide.</div>'; return; }
+  let html = '';
+  AISLE_ORDER.forEach(a => {
+    const g = todo.filter(c => aisleOf(c.article) === a);
+    if (g.length) html += `<h3 class="aisle">${esc(a)}</h3>` + g.map(courseRow).join('');
+  });
+  if (done.length) html += `<h3 class="aisle">Dans le panier</h3>` + done.map(courseRow).join('');
+  $('courses').innerHTML = html;
 }
 
 /* ---------- Saison (France métropolitaine) ---------- */
@@ -740,10 +973,10 @@ async function searchOFF() {
 }
 
 /* ---------- Ajout / modification d'un produit ---------- */
-let editId = null;     // null = ajout, sinon id du produit modifié
+let editId = null, editMin0 = '';     // null = ajout, sinon id du produit modifié
 function resetForm() {
   editId = null; draft = {}; SUGG = []; lastLookup = '';
-  ['code', 'nom', 'marque', 'dlc', 'search'].forEach(i => $(i).value = '');
+  ['code', 'nom', 'marque', 'dlc', 'search', 'prix', 'minStock'].forEach(i => $(i).value = '');
   $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true; $('prodBox').hidden = true;
   $('ficheOut').innerHTML = ''; $('ficheBox').hidden = true;
 }
@@ -766,6 +999,10 @@ function openEdit(id) {
   $('marque').value = it.marque || '';
   $('qte').value = it.quantite || 1;
   $('dlc').value = it.date_peremption || '';
+  $('prix').value = it.prix || '';
+  const pr = prodOf(keyOf(it));
+  $('minStock').value = pr && pr.min_stock ? pr.min_stock : '';
+  editMin0 = $('minStock').value;
   $('dlgAdd').classList.add('editing');
   syncFiche();
   $('dlgTitle').textContent = 'Modifier le produit';
@@ -778,6 +1015,7 @@ async function saveAdd(next) {
   const payload = {
     nom, marque: $('marque').value.trim(), quantite: $('qte').value, date_peremption: $('dlc').value,
     code_barres: $('code').value.trim(), image: draft.image || '', nutriscore: draft.nutriscore || '',
+    prix: $('prix').value,
   };
   remember({ code: payload.code_barres, nom, marque: payload.marque, image: payload.image, nutriscore: payload.nutriscore });
   await stopScan();
@@ -785,6 +1023,7 @@ async function saveAdd(next) {
     $('dlgAdd').close();
     toast('Modifié');
     api('updateFrigo', { id: editId, ...payload });
+    if ($('minStock').value !== editMin0) api('setProduit', { cle: keyOf({ code_barres: payload.code_barres, nom }), nom, min_stock: Number($('minStock').value) || 0 });
     return;
   }
   api('addFrigo', payload);
@@ -915,15 +1154,294 @@ $('prodBtn').onclick = () => {
 };
 $('prodBox').onclick = e => { const b = e.target.closest('[data-prod]'); if (b) applyProduce(b.dataset.prod); };
 
+/* ---------- Stats (bilan, produits souvent rachetés) ---------- */
+let STATS = null, statsAt = 0;
+async function loadStats(force) {
+  if (!force && STATS && Date.now() - statsAt < 300000) return STATS;
+  const r = await api('stats');
+  if (r && r.stats) { STATS = r.stats; statsAt = Date.now(); }
+  return STATS;
+}
+function renderBilan() {
+  if (!STATS) { $('bilan').innerHTML = '<div class="empty">Calcul du bilan…</div>'; return; }
+  const ms = STATS.mois || [], cur = ms[0] || { mange: 0, jete: 0, euros_jetes: 0 };
+  const tot = cur.mange + cur.jete;
+  if (!ms.some(m => m.mange + m.jete)) {
+    $('bilan').innerHTML = '<div class="empty">Le bilan se remplit au fil de l\'eau :<br>chaque « Mangé » ou « Jeté » compte.</div>'; return;
+  }
+  const pct = tot ? Math.round(cur.jete / tot * 100) : 0;
+  const euros = ms.some(m => m.euros_jetes > 0);
+  const eur = n => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+  const max = Math.max(1, ...ms.map(m => m.mange + m.jete));
+  $('bilan').innerHTML = `<div class="stat-hero">
+      <div class="big">${tot ? pct + ' %' : '–'} <small style="font-size:15px;font-weight:600">jeté ce mois-ci</small></div>
+      ${cur.mange} consommé${cur.mange > 1 ? 's' : ''}, ${cur.jete} jeté${cur.jete > 1 ? 's' : ''}.
+      ${euros ? `<br><b>${esc(eur(cur.euros_jetes))}</b> à la poubelle <small>(d'après les prix saisis)</small>` : '<br><small>Renseigne le prix des produits (ou importe un ticket) pour voir les euros.</small>'}
+    </div>
+    <h3 class="aisle" style="margin-top:6px">6 derniers mois</h3>
+    ${ms.map(m => {
+      const lab = MOIS[+String(m.m).slice(5, 7) - 1] || m.m;
+      return `<div class="mrow"><span>${esc(lab)}</span><div class="mbar" title="${m.mange} consommés, ${m.jete} jetés"><i class="g" style="width:${m.mange / max * 100}%"></i><i class="r" style="width:${m.jete / max * 100}%"></i></div><span>${m.mange} · ${m.jete}</span></div>`;
+    }).join('')}
+    <p class="hint">Vert : consommé · Rouge : jeté</p>
+    ${(STATS.top_jetes || []).length ? `<h3 class="aisle">Ce que tu jettes le plus</h3><ul class="top-list">${STATS.top_jetes.map(t => `<li><span>${esc(t.nom)}</span><small>×${t.quantite}${t.euros ? ' · ' + esc(eur(t.euros)) : ''}</small></li>`).join('')}</ul>` : ''}`;
+}
+
+/* ---------- Ouvrir / jeter ---------- */
+let act = null;
+function openAct(mode, id) {
+  const it = state.frigo.find(i => String(i.id) === String(id));
+  if (!it) return;
+  const bin = mode === 'bin';
+  act = { mode, id: it.id, q: Number(it.quantite) || 1, dlc: it.date_peremption || '' };
+  $('actTitle').textContent = (bin ? 'Jeter : ' : 'Ouvrir : ') + it.nom;
+  $('actHint').textContent = bin ? "Noté dans ton bilan anti-gaspi." : "Un produit ouvert se garde moins longtemps : la date de péremption est raccourcie.";
+  $('actQtyBox').hidden = act.q < 2; $('actQty').max = act.q; $('actQty').value = 1;
+  $('actDaysBox').hidden = bin;
+  $('actOk').textContent = bin ? 'Jeter' : 'Ouvrir';
+  if (!bin) { const p = prodOf(keyOf(it)); $('actDays').value = p && p.jours_ouvert ? p.jours_ouvert : 3; actPreview(); }
+  $('dlgAct').showModal();
+}
+function actPreview() {
+  const v = $('actDays').value;
+  if (v === '' || !isFinite(Number(v))) { $('actPreview').innerHTML = ''; return; }
+  const lim = isoPlus(Number(v));
+  $('actPreview').innerHTML = act && act.dlc && act.dlc < lim
+    ? `Ta date actuelle (<b>${esc(dateLabel(act.dlc))}</b>) est plus proche : elle est conservée.`
+    : `À consommer avant le <b>${esc(dateLabel(lim))}</b>.`;
+}
+$('actDays').oninput = actPreview;
+document.querySelectorAll('[data-ad]').forEach(b => b.onclick = () => { $('actDays').value = b.dataset.ad; actPreview(); });
+$('actCancel').onclick = () => $('dlgAct').close();
+$('actOk').onclick = () => {
+  if (!act) return;
+  const n = Math.max(1, Math.min(act.q, Math.floor(Number($('actQty').value)) || 1));
+  if (act.mode === 'bin') {
+    $('dlgAct').close(); statsAt = 0;
+    api('bin', { id: act.id, n }); toast('Jeté · noté dans le bilan');
+    return;
+  }
+  const jours = $('actDays').value;
+  if (jours === '' || !isFinite(Number(jours))) { toast('Indique le nombre de jours.'); return; }
+  $('dlgAct').close();
+  api('open', { id: act.id, n, jours: Number(jours) });
+  toast('Ouvert : date raccourcie');
+};
+
+/* ---------- Réglages et vérification des données ---------- */
+function openSet() {
+  const hh = t => new Date(t).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  $('setStatus').innerHTML = sync.ok === false ? `<b>⚠ ${esc(sync.msg)}</b><br>Dernières données du téléphone${sync.at ? ' : ' + esc(hh(sync.at)) : ''}.`
+    : `<b>${sync.at ? '✓ Connecté' : 'Pas encore synchronisé'}</b>${sync.at ? ' · ' + esc(hh(sync.at)) : ''}<br>Back-end : version ${sync.ver === null ? '?' : sync.ver} (attendue : ${WANT_V}).`
+      + (sync.ver !== null && sync.ver < WANT_V ? '<br>⚠ Republie <code>Code.gs</code> : Déployer > Gérer les déploiements > Modifier > Nouvelle version.' : '');
+  $('setOut').innerHTML = '';
+  $('dlgSet').showModal();
+}
+async function setCheck() {
+  $('setOut').innerHTML = '<p class="hint">Vérification…</p>';
+  const r = await api('list');
+  $('setOut').innerHTML = !r ? '<p class="hint">La connexion a échoué : voir le message en haut de l\'écran.</p>'
+    : WARN.length ? `<p class="hint"><b>${WARN.length} point${WARN.length > 1 ? 's' : ''} à regarder :</b></p><ul class="hint" style="padding-left:18px">${WARN.map(w => `<li>${esc(w)}</li>`).join('')}</ul><p class="hint">« Réparer » corrige les identifiants, les dates et les quantités.</p>`
+    : '<p class="hint">✓ Aucun problème trouvé dans le Sheet.</p>';
+}
+async function setRepair() {
+  if (!confirm("Réparer les onglets Frigo et Courses ?\nLes dates et quantités illisibles seront corrigées (ou vidées), les identifiants manquants créés.")) return;
+  $('setOut').innerHTML = '<p class="hint">Réparation…</p>';
+  const r = await api('repair');
+  if (!r) { $('setOut').innerHTML = '<p class="hint">Échec : voir le message en haut de l\'écran.</p>'; return; }
+  const x = r.extra || { corriges: 0, details: [] };
+  $('setOut').innerHTML = x.corriges ? `<p class="hint"><b>${x.corriges} correction${x.corriges > 1 ? 's' : ''} :</b></p><ul class="hint" style="padding-left:18px">${(x.details || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul>`
+    : '<p class="hint">✓ Rien à réparer.</p>';
+}
+$('gear').onclick = openSet;
+$('sync').onclick = () => { const a = $('sync').dataset.act; if (a === 'retry') api('list'); else if (a === 'cfg') openSet(); };
+$('setCheck').onclick = setCheck;
+$('setRepair').onclick = setRepair;
+$('setPin').onclick = () => { $('dlgSet').close(); openCfg(); };
+$('setClose').onclick = () => $('dlgSet').close();
+
+/* ---------- Import d'un ticket / d'une commande drive ---------- */
+let IMP = null;
+function openImp() {
+  IMP = null;
+  $('impStep1').hidden = false; $('impStep2').hidden = true;
+  $('impFile').value = ''; $('impText').value = ''; $('impErr').textContent = '';
+  $('impGo').disabled = false; $('impGo').textContent = 'Analyser';
+  $('dlgImp').showModal();
+}
+const fileB64 = f => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => ko(r.error); r.readAsDataURL(f); });
+// Photo : réduite avant l'envoi (téléphone = fichiers de plusieurs Mo), assez grande pour rester lisible
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(bmp.width * k)); cv.height = Math.max(1, Math.round(bmp.height * k));
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  return { mime: 'image/jpeg', data: await fileB64(blob) };
+}
+async function impAnalyse() {
+  const f = $('impFile').files[0], txt = $('impText').value.trim();
+  const err = m => { $('impErr').textContent = m; };
+  err('');
+  if (!f && !txt) { err('Choisis un fichier ou colle le texte du ticket.'); return; }
+  const payload = {};
+  $('impGo').disabled = true; $('impGo').textContent = 'Lecture en cours…';
+  try {
+    if (f) {
+      if (f.type === 'application/pdf') {
+        if (f.size > 8 * 1024 * 1024) throw new Error('PDF trop lourd (8 Mo maximum).');
+        payload.mime = f.type; payload.data = await fileB64(f);
+      } else if (/^image\//.test(f.type)) {
+        try { Object.assign(payload, await shrinkImage(f)); }
+        catch (e) {
+          if (/^image\/(jpeg|png|webp|gif)$/.test(f.type) && f.size < 8 * 1024 * 1024) { payload.mime = f.type; payload.data = await fileB64(f); }
+          else throw new Error("Ce format d'image n'est pas pris en charge : fais une capture d'écran ou un PDF.");
+        }
+      } else if (/^text\//.test(f.type)) {
+        let t = await f.text();
+        if (f.type === 'text/html') t = new DOMParser().parseFromString(t, 'text/html').body.textContent || '';
+        payload.texte = t.replace(/\s+\n/g, '\n').slice(0, 30000);
+      } else throw new Error('Format non pris en charge : PDF, photo ou texte.');
+    }
+    if (txt) payload.texte = ((payload.texte ? payload.texte + '\n' : '') + txt).slice(0, 30000);
+  } catch (e) { err(e.message || 'Fichier illisible.'); $('impGo').disabled = false; $('impGo').textContent = 'Analyser'; return; }
+  const r = await api('receipt', payload);
+  $('impGo').disabled = false; $('impGo').textContent = 'Analyser';
+  if (!r || !r.receipt) { err("La lecture a échoué (le message est affiché en bas de l'écran). Réessaie avec une photo plus nette, ou colle le texte."); return; }
+  IMP = r.receipt;
+  IMP.articles = IMP.articles.filter(a => a.rayon !== 'non_alimentaire').map(a => ({ ...a, keep: !['sec', 'boisson'].includes(a.rayon) }));
+  if (!IMP.articles.length) { err('Aucun produit alimentaire reconnu.'); return; }
+  $('impStep1').hidden = true; $('impStep2').hidden = false;
+  renderImp();
+}
+function renderImp() {
+  const n = IMP.articles.length;
+  $('impHead').innerHTML = `${esc(IMP.magasin || 'Ticket')}${IMP.date ? ' · ' + esc(fmtDate(IMP.date)) : ''} · ${n} produit${n > 1 ? 's' : ''}. Vérifie, corrige, décoche ce que tu ne veux pas suivre (épicerie et boissons sont décochées au départ).`;
+  $('impList').innerHTML = IMP.articles.map((a, i) => `<div class="imp ${a.keep ? '' : 'off'}" data-i="${i}">
+      <input type="checkbox" data-f="keep" ${a.keep ? 'checked' : ''} aria-label="Ajouter ${esc(a.nom)}">
+      <div class="impf">
+        <input type="text" data-f="nom" value="${esc(a.nom)}" aria-label="Nom">
+        <div class="improw">
+          <input type="number" data-f="quantite" value="${esc(a.quantite)}" min="1" inputmode="numeric" aria-label="Quantité">
+          <input type="date" data-f="date_peremption" value="${esc(a.date_peremption)}" aria-label="Date de péremption">
+          <input type="number" data-f="prix" value="${a.prix === '' ? '' : esc(a.prix)}" min="0" step="0.01" inputmode="decimal" placeholder="€" aria-label="Prix unitaire">
+        </div>
+        ${a.rayon === 'surgele' ? '<small class="hint">Surgelé : sera rangé au congélateur</small>' : ''}
+      </div>
+    </div>`).join('');
+  const k = IMP.articles.filter(a => a.keep).length;
+  $('impAdd').textContent = k ? `Ajouter ${k} produit${k > 1 ? 's' : ''}` : 'Rien à ajouter';
+  $('impAdd').disabled = !k;
+}
+$('impList').addEventListener('input', e => {
+  const row = e.target.closest('[data-i]'), f = e.target.dataset.f;
+  if (!row || !f) return;
+  const a = IMP.articles[+row.dataset.i];
+  if (f === 'keep') { a.keep = e.target.checked; row.classList.toggle('off', !a.keep); const k = IMP.articles.filter(x => x.keep).length; $('impAdd').textContent = k ? `Ajouter ${k} produit${k > 1 ? 's' : ''}` : 'Rien à ajouter'; $('impAdd').disabled = !k; }
+  else a[f] = e.target.value;
+});
+$('impBtn').onclick = async () => { await stopScan(); $('dlgAdd').close(); openImp(); };
+$('impCancel').onclick = () => $('dlgImp').close();
+$('impBack').onclick = () => { $('impStep1').hidden = false; $('impStep2').hidden = true; };
+$('impGo').onclick = impAnalyse;
+$('impAdd').onclick = async () => {
+  const items = IMP.articles.filter(a => a.keep && String(a.nom).trim())
+    .map(a => ({ nom: String(a.nom).trim(), quantite: Number(a.quantite) || 1, date_peremption: a.date_peremption || '', prix: a.prix === '' ? '' : Number(a.prix) || '', surgele: a.rayon === 'surgele' }));
+  if (!items.length) return;
+  $('impAdd').disabled = true;
+  const r = await api('addMany', { items });
+  $('impAdd').disabled = false;
+  if (!r) return;
+  $('dlgImp').close();
+  const x = r.extra || {};
+  toast(`${(x.ajoutes || 0) + (x.fusionnes || 0)} produit${(x.ajoutes || 0) + (x.fusionnes || 0) > 1 ? 's' : ''} ajouté${(x.ajoutes || 0) + (x.fusionnes || 0) > 1 ? 's' : ''} au stock`);
+};
+
+/* ---------- Repas : idées du jour / planning de la semaine ---------- */
+let repView = 'idees', planDays = 5, DRAFT = null;
+$('repSeg').onclick = e => {
+  const b = e.target.closest('[data-rs]'); if (!b) return;
+  repView = b.dataset.rs;
+  document.querySelectorAll('#repSeg button').forEach(x => x.classList.toggle('on', x === b));
+  $('repIdees').hidden = repView !== 'idees'; $('repPlan').hidden = repView !== 'plan';
+  $('summary').textContent = repView === 'idees' ? 'Pour finir ce qui périme en premier' : 'Organise la semaine, les courses suivent';
+};
+$('planDays').onclick = e => {
+  const b = e.target.closest('[data-pd]'); if (!b) return;
+  planDays = +b.dataset.pd;
+  document.querySelectorAll('#planDays button').forEach(x => x.classList.toggle('on', x === b));
+};
+const dayTitle = iso => { const p = iso.split('-'); const s = new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); return s.charAt(0).toUpperCase() + s.slice(1); };
+function mealsHtml(list, saved) {
+  const days = [...new Set(list.map(m => m.date))].sort();
+  return days.map(d => `<div class="day"><h3>${esc(dayTitle(d))}</h3>${list.filter(m => m.date === d).sort((a, b) => a.moment.localeCompare(b.moment)).map(m => `
+    <div class="meal"><div class="mt"><b>${m.moment === 'midi' ? 'Midi' : 'Soir'} · ${esc(m.titre)}</b>${saved ? `<button class="x" data-pdel="${esc(m.id)}" aria-label="Retirer ce repas">×</button>` : ''}</div>
+      <small>${Number(m.temps_min) ? esc(m.temps_min) + ' min' : ''}</small>
+      ${(m.utilise || []).length ? `<p><b>Avec :</b> ${m.utilise.map(esc).join(', ')}</p>` : ''}
+      ${(m.a_acheter || []).length ? `<p><b>À acheter :</b> ${m.a_acheter.map(esc).join(', ')}</p>` : ''}
+      ${m.note ? `<p><small>${esc(m.note)}</small></p>` : ''}</div>`).join('')}</div>`).join('');
+}
+function missingFromPlan() {
+  const have = new Set(state.courses.filter(c => !(c.fait === true || c.fait === 'TRUE')).map(c => norm(c.article).trim()));
+  const seen = new Set(), out = [];
+  state.planning.forEach(m => (m.a_acheter || []).forEach(x => { const k = norm(x).trim(); if (k && !have.has(k) && !seen.has(k)) { seen.add(k); out.push(x); } }));
+  return out;
+}
+function renderPlanning() {
+  $('planDraft').innerHTML = DRAFT ? `<h2 class="plan-h">Proposition</h2>${mealsHtml(DRAFT, false)}
+    <div class="foot"><button class="btn ghost" id="draftRedo">Refaire</button><button class="btn fill" id="draftSave">Enregistrer ce planning</button></div>` : '';
+  const miss = missingFromPlan();
+  $('planning').innerHTML = state.planning.length
+    ? `<h2 class="plan-h">Planning enregistré</h2>${mealsHtml(state.planning, true)}
+       ${miss.length ? `<button class="btn fill" id="planBuy" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Ajouter les courses manquantes (${miss.length})</button>` : '<p class="hint" style="margin-top:12px">✓ Tout ce qu\'il faut est déjà en stock ou sur la liste de courses.</p>'}`
+    : (DRAFT ? '' : '<div class="empty">Aucun repas prévu.<br>Génère un planning, il tiendra compte de ce qui périme.</div>');
+}
+async function getPlan() {
+  const moments = [$('mMidi').checked && 'midi', $('mSoir').checked && 'soir'].filter(Boolean);
+  if (!moments.length) { toast('Choisis midi, soir, ou les deux.'); return; }
+  const personnes = Math.max(1, Math.min(12, Number($('planPers').value) || 4));
+  lsSet('frigo_people', String(personnes));
+  const btn = $('getPlan'); btn.disabled = true; btn.textContent = 'Réflexion en cours…';
+  const r = await api('plan', { personnes, jours: planDays, moments, envie: $('planEnvie').value.trim() });
+  btn.disabled = false; btn.textContent = 'Proposer un planning';
+  if (!r || !r.plan) return;
+  DRAFT = r.plan; renderPlanning();
+  $('planDraft').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+$('getPlan').onclick = getPlan;
+$('planDraft').onclick = async e => {
+  if (e.target.closest('#draftRedo')) { getPlan(); return; }
+  if (!e.target.closest('#draftSave') || !DRAFT) return;
+  const days = new Set(DRAFT.map(m => m.date));
+  if (state.planning.some(m => days.has(m.date)) && !confirm('Remplacer les repas déjà prévus sur ces jours ?')) return;
+  const r = await api('planSave', { repas: DRAFT });
+  if (r) { DRAFT = null; renderPlanning(); toast('Planning enregistré'); }
+};
+$('planning').onclick = async e => {
+  const d = e.target.closest('[data-pdel]');
+  if (d) { api('planRemove', { id: d.dataset.pdel }); return; }
+  if (e.target.closest('#planBuy')) {
+    const miss = missingFromPlan();
+    await api('addCourses', { articles: miss.map(article => ({ article, quantite: 1 })) });
+    toast(`${miss.length} article${miss.length > 1 ? 's' : ''} ajouté${miss.length > 1 ? 's' : ''} aux courses`);
+  }
+};
+
 /* ---------- Événements ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  TAB = b.dataset.tab;
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 's-' + b.dataset.tab));
-  $('fab').classList.toggle('on', b.dataset.tab === 'frigo');
-  $('title').textContent = { frigo: 'KOMI', courses: 'Courses', recettes: 'Recettes', saison: 'De saison' }[b.dataset.tab];
-  if (b.dataset.tab === 'recettes') { $('summary').textContent = 'Pour finir ce qui périme en premier'; renderRecettes(); }
-  else if (b.dataset.tab === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
-  else if (b.dataset.tab === 'courses') { $('summary').textContent = 'À acheter'; }
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === 's-' + TAB));
+  $('fab').classList.toggle('on', TAB === 'frigo');
+  $('title').textContent = { frigo: 'KOMI', courses: 'Courses', recettes: 'Repas', saison: 'De saison', bilan: 'Bilan' }[TAB];
+  if (TAB === 'recettes') {
+    $('summary').textContent = repView === 'idees' ? 'Pour finir ce qui périme en premier' : 'Organise la semaine, les courses suivent';
+    renderRecettes(); renderPlanning();
+  }
+  else if (TAB === 'saison') { $('summary').textContent = 'Fruits et légumes du mois'; renderSaison(); }
+  else if (TAB === 'courses') { $('summary').textContent = 'À acheter, rangé par rayon'; loadStats().then(() => { if (TAB === 'courses') renderCourses(); }); }
+  else if (TAB === 'bilan') { $('summary').textContent = 'Ton anti-gaspi'; renderBilan(); loadStats(true).then(() => { if (TAB === 'bilan') renderBilan(); }); }
   else renderFrigo();
 });
 
@@ -963,17 +1481,27 @@ $('frigo').onclick = e => {
     }
     return;
   }
+  const op = e.target.closest('[data-open]');
+  if (op) { openAct('open', op.dataset.open); return; }
   const eat = e.target.closest('[data-eat]'), bin = e.target.closest('[data-bin]');
   if (eat) {
     const it = state.frigo.find(i => String(i.id) === eat.dataset.eat);
-    if (Number(it.quantite) > 1) api('setQty', { id: it.id, quantite: Number(it.quantite) - 1 });
-    else { api('removeFrigo', { id: it.id, consumed: true }); toast('Ajouté à la liste de courses'); }
+    if (!it) return;
+    const key = keyOf(it), pr = prodOf(key), need = Math.max(pr ? Number(pr.min_stock) || 0 : 0, 1);
+    statsAt = 0;
+    api('eat', { id: it.id, n: 1 });
+    toast(stockOfKey(key) - 1 < need ? 'Ajouté à la liste de courses' : 'Bon appétit');
   }
-  if (bin) api('removeFrigo', { id: bin.dataset.bin, consumed: false });
+  if (bin) {
+    const it = state.frigo.find(i => String(i.id) === bin.dataset.bin);
+    if (!it) return;
+    if ((Number(it.quantite) || 1) > 1) openAct('bin', it.id);
+    else { statsAt = 0; api('bin', { id: it.id, n: 1 }); toast('Jeté · noté dans le bilan'); }
+  }
 };
 
 $('getRec').onclick = getRecipes;
-$('personnes').value = localStorage.getItem('frigo_people') || 4;
+$('personnes').value = lsGet('frigo_people', 4); $('planPers').value = lsGet('frigo_people', 4);
 if (REC) $('getRec').textContent = 'Proposer d\'autres idées';
 $('recettes').onclick = e => {
   const b = e.target.closest('[data-buy]');
@@ -993,6 +1521,10 @@ $('courses').onclick = e => {
   if (t) api('toggleCourse', { id: t.dataset.tog });
   if (d) api('removeCourse', { id: d.dataset.del });
 };
+$('freq').onclick = e => {
+  const b = e.target.closest('[data-fq]');
+  if (b) { statsAt = 0; api('addCourse', { article: b.dataset.fq, quantite: 1 }); }
+};
 $('clearDone').onclick = () => api('clearDone');
 $('months').onclick = e => { const b = e.target.closest('[data-m]'); if (b) { moisSel = +b.dataset.m; renderSaison(); } };
 
@@ -1002,12 +1534,13 @@ $('saveCfg').onclick = () => {
   if (!url || !pin) { toast(url ? 'Saisis ton code secret.' : "Saisis l'adresse de l'API et ton code."); return; }
   CFG = { url, pin };
   try { localStorage.setItem('frigo_cfg', JSON.stringify(CFG)); } catch (e) {}
-  $('dlgCfg').close(); api('list');
+  $('dlgCfg').close(); setSync({ ok: null, msg: '' }); api('list');
 };
 
 /* ---------- Démarrage ---------- */
 render();
 if (!CFG.url || !CFG.pin) openCfg(); else api('list');
+window.addEventListener('error', e => { try { setSync({ ok: false, msg: 'Erreur dans la page : ' + String(e.message || '').slice(0, 80) }); } catch (x) {} });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && CFG.url && CFG.pin) api('list'); });
 </script>
 </body>
