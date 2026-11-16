@@ -124,6 +124,8 @@ header{position:relative}
 textarea{width:100%;min-height:90px;padding:12px 14px;font:inherit;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
 .menu{display:grid;gap:8px;margin-top:6px}
 .menu .btn{width:100%;padding:12px;font-size:15px;text-align:left}
+.chips [data-rg].fill{color:#fff}
+.share-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .errline{color:var(--urgent);font-size:14px;margin:8px 0 0;min-height:1em}
 
 /* Import d'un ticket */
@@ -219,7 +221,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
   </div>
   <div id="freq"></div>
   <div id="courses"></div>
-  <p><button class="btn ghost" id="clearDone">Vider les articles cochés</button></p>
+  <div class="share-row"><button class="btn" id="shareCourses">Partager la liste</button><button class="btn ghost" id="clearDone">Vider les articles cochés</button></div>
 </section>
 
 <section id="s-saison">
@@ -241,6 +243,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <input type="number" id="personnes" min="1" max="12" value="4" inputmode="numeric">
     <label for="envie">Une envie ? (facultatif)</label>
     <input type="text" id="envie" placeholder="rapide, sans four, plat froid…" maxlength="120">
+    <label>Régime (facultatif)</label>
+    <div class="chips" data-regs></div>
+    <p class="hint" data-regnote hidden>Pour une allergie ou une maladie cœliaque, vérifie toujours les étiquettes : l'IA peut se tromper.</p>
     <button class="btn fill" id="getRec" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Proposer des recettes</button>
   </div>
   <div id="recettes"></div>
@@ -255,6 +260,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
       <input type="number" id="planPers" min="1" max="12" value="4" inputmode="numeric">
       <label for="planEnvie">Une contrainte ? (facultatif)</label>
       <input type="text" id="planEnvie" placeholder="sans porc, un repas végétarien…" maxlength="120">
+      <label>Régime (facultatif)</label>
+      <div class="chips" data-regs></div>
+      <p class="hint" data-regnote hidden>Pour une allergie ou une maladie cœliaque, vérifie toujours les étiquettes : l'IA peut se tromper.</p>
       <button class="btn fill" id="getPlan" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Proposer un planning</button>
     </div>
     <div id="planDraft"></div>
@@ -728,7 +736,9 @@ function renderRecettes() {
         ${(x.a_acheter || []).length ? `<p><b>À acheter :</b> ${x.a_acheter.map(u => esc(u)).join(', ')}</p>
           <button class="btn" data-buy="${k}">Ajouter à la liste de courses</button>` : ''}
         <ol>${(x.etapes || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+        <div class="share-row"><button class="btn" data-share-rec="${k}">Partager cette recette</button></div>
       </details>`).join('')
+    + regWarn(REC.regimes)
     + (when ? `<p class="rec-when">Proposé ${esc(when)}</p>` : '');
 }
 
@@ -739,10 +749,10 @@ async function getRecipes() {
   try { localStorage.setItem('frigo_people', String(personnes)); } catch (e) {}
   const again = !!REC;                         // une proposition existe déjà : on veut de nouvelles idées
   btn.disabled = true; btn.textContent = 'Recherche en cours…';
-  const r = await api('recipes', { personnes, envie: $('envie').value.trim(), refresh: again });
+  const r = await api('recipes', { personnes, envie: $('envie').value.trim(), refresh: again, regimes: REG });
   btn.disabled = false; btn.textContent = 'Proposer d\'autres idées';
   if (!r) return;                              // le message d'erreur est déjà affiché
-  REC = { alerte: r.alerte || '', recettes: r.recettes, at: Date.now() };
+  REC = { alerte: r.alerte || '', recettes: r.recettes, at: Date.now(), regimes: REG.slice() };
   try { localStorage.setItem('frigo_rec', JSON.stringify(REC)); } catch (e) {}
   renderRecettes();
 }
@@ -1479,7 +1489,7 @@ $('impAdd').onclick = async () => {
 };
 
 /* ---------- Repas : idées du jour / planning de la semaine ---------- */
-let repView = 'idees', planDays = 5, DRAFT = null;
+let repView = 'idees', planDays = 5, DRAFT = null, DRAFT_ALERT = '', DRAFT_REG = [];
 $('repSeg').onclick = e => {
   const b = e.target.closest('[data-rs]'); if (!b) return;
   repView = b.dataset.rs;
@@ -1509,11 +1519,13 @@ function missingFromPlan() {
   return out;
 }
 function renderPlanning() {
-  $('planDraft').innerHTML = DRAFT ? `<h2 class="plan-h">Proposition</h2>${mealsHtml(DRAFT, false)}
+  $('planDraft').innerHTML = DRAFT ? `<h2 class="plan-h">Proposition</h2>${DRAFT_ALERT ? `<p class="rec-alert">${esc(DRAFT_ALERT)}</p>` : ''}${mealsHtml(DRAFT, false)}${regWarn(DRAFT_REG)}
+    <div class="share-row"><button class="btn" data-share-draft>Partager</button></div>
     <div class="foot"><button class="btn ghost" id="draftRedo">Refaire</button><button class="btn fill" id="draftSave">Enregistrer ce planning</button></div>` : '';
   const miss = missingFromPlan();
   $('planning').innerHTML = state.planning.length
     ? `<h2 class="plan-h">Planning enregistré</h2>${mealsHtml(state.planning, true)}
+       <div class="share-row"><button class="btn" data-share-plan>Partager le planning</button></div>
        ${miss.length ? `<button class="btn fill" id="planBuy" style="width:100%;margin-top:14px;padding:13px;font-size:16px">Ajouter les courses manquantes (${miss.length})</button>` : '<p class="hint" style="margin-top:12px">✓ Tout ce qu\'il faut est déjà en stock ou sur la liste de courses.</p>'}`
     : (DRAFT ? '' : '<div class="empty">Aucun repas prévu.<br>Génère un planning, il tiendra compte de ce qui périme.</div>');
 }
@@ -1523,14 +1535,15 @@ async function getPlan() {
   const personnes = Math.max(1, Math.min(12, Number($('planPers').value) || 4));
   lsSet('frigo_people', String(personnes));
   const btn = $('getPlan'); btn.disabled = true; btn.textContent = 'Réflexion en cours…';
-  const r = await api('plan', { personnes, jours: planDays, moments, envie: $('planEnvie').value.trim() });
+  const r = await api('plan', { personnes, jours: planDays, moments, envie: $('planEnvie').value.trim(), regimes: REG });
   btn.disabled = false; btn.textContent = 'Proposer un planning';
   if (!r || !r.plan) return;
-  DRAFT = r.plan; renderPlanning();
+  DRAFT = r.plan; DRAFT_ALERT = r.alerte || ''; DRAFT_REG = REG.slice(); renderPlanning();
   $('planDraft').scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 $('getPlan').onclick = getPlan;
 $('planDraft').onclick = async e => {
+  if (e.target.closest('[data-share-draft]') && DRAFT) { shareText('Repas à venir', planShareText(DRAFT)); return; }
   if (e.target.closest('#draftRedo')) { getPlan(); return; }
   if (!e.target.closest('#draftSave') || !DRAFT) return;
   const days = new Set(DRAFT.map(m => m.date));
@@ -1539,6 +1552,7 @@ $('planDraft').onclick = async e => {
   if (r) { DRAFT = null; renderPlanning(); toast('Planning enregistré'); }
 };
 $('planning').onclick = async e => {
+  if (e.target.closest('[data-share-plan]')) { shareText('Repas à venir', planShareText(state.planning)); return; }
   const d = e.target.closest('[data-pdel]');
   if (d) { api('planRemove', { id: d.dataset.pdel }); return; }
   if (e.target.closest('#planBuy')) {
@@ -1547,6 +1561,71 @@ $('planning').onclick = async e => {
     toast(`${miss.length} article${miss.length > 1 ? 's' : ''} ajouté${miss.length > 1 ? 's' : ''} aux courses`);
   }
 };
+
+/* ---------- Régimes alimentaires ---------- */
+const REGS = [['sans_gluten', 'Sans gluten'], ['sans_lactose', 'Sans lactose'], ['vegetarien', 'Végétarien'], ['vegetalien', 'Végétalien'],
+  ['low_fodmap', 'Low FODMAP'], ['sans_porc', 'Sans porc'], ['sans_arachide', 'Sans arachide / fruits à coque'], ['sans_oeuf', 'Sans œuf']];
+let REG = [];
+try { const r0 = JSON.parse(lsGet('frigo_regimes', '[]')); REG = Array.isArray(r0) ? r0.filter(k => REGS.some(x => x[0] === k)) : []; } catch (e) {}
+function renderReg() {
+  document.querySelectorAll('[data-regs]').forEach(c => {
+    c.innerHTML = REGS.map(([k, t]) => `<button type="button" class="btn ${REG.includes(k) ? 'fill' : 'ghost'}" data-rg="${k}" aria-pressed="${REG.includes(k)}">${esc(t)}</button>`).join('');
+  });
+  document.querySelectorAll('[data-regnote]').forEach(n => n.hidden = !REG.length);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-rg]'); if (!b) return;
+  const k = b.dataset.rg;
+  REG = REG.includes(k) ? REG.filter(x => x !== k) : REG.concat(k);
+  if (k === 'vegetalien' && REG.includes(k)) REG = REG.filter(x => x !== 'vegetarien');
+  if (k === 'vegetarien' && REG.includes(k)) REG = REG.filter(x => x !== 'vegetalien');
+  lsSet('frigo_regimes', JSON.stringify(REG)); renderReg();
+});
+const regLabel = keys => REGS.filter(x => (keys || []).includes(x[0])).map(x => x[1]).join(', ');
+const regWarn = keys => (keys || []).length ? `<p class="hint">Régime pris en compte : <b>${esc(regLabel(keys))}</b>. Pour une allergie ou une maladie cœliaque, vérifie toujours les étiquettes : l'IA peut se tromper.</p>` : '';
+
+/* ---------- Partage (WhatsApp, Messages, mail… via la feuille de partage du téléphone) ---------- */
+// À appeler directement depuis un tap : le navigateur refuse le partage sinon.
+async function shareText(title, text) {
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(text); toast('Copié : colle-le dans un message'); }
+  catch (e) { window.prompt('Copie ce texte :', text); }
+}
+const dayLong = iso => dayTitle(iso);
+function planShareText(list) {
+  const days = [...new Set(list.map(m => m.date))].sort();
+  let t = `Repas à venir 🍽️\n`;
+  days.forEach(d => {
+    t += `\n${dayLong(d)}\n`;
+    list.filter(m => m.date === d).sort((a, b) => a.moment.localeCompare(b.moment)).forEach(m => {
+      t += `• ${m.moment === 'midi' ? 'Midi' : 'Soir'} : ${m.titre}${Number(m.temps_min) ? ' (' + m.temps_min + ' min)' : ''}\n`;
+    });
+  });
+  const seen = new Set(), buy = [];
+  list.forEach(m => (m.a_acheter || []).forEach(x => { const k = norm(x).trim(); if (k && !seen.has(k)) { seen.add(k); buy.push(x); } }));
+  if (buy.length) t += `\n🛒 À acheter en route :\n${buy.map(x => '- ' + x).join('\n')}\n`;
+  return t.trim();
+}
+function recipeShareText(x) {
+  let t = `${x.titre}${Number(x.temps_min) ? ' (' + x.temps_min + ' min)' : ''}\n`;
+  if ((x.utilise || []).length) t += `\nAvec : ${x.utilise.join(', ')}\n`;
+  if ((x.a_acheter || []).length) t += `\n🛒 À acheter en route :\n${x.a_acheter.map(a => '- ' + a).join('\n')}\n`;
+  if ((x.etapes || []).length) t += `\n${x.etapes.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n`;
+  return t.trim();
+}
+function coursesShareText() {
+  const todo = state.courses.filter(c => !(c.fait === true || c.fait === 'TRUE'));
+  if (!todo.length) return '';
+  let t = 'Liste de courses 🛒\n';
+  AISLE_ORDER.forEach(a => {
+    const g = todo.filter(c => aisleOf(c.article) === a);
+    if (g.length) t += `\n${a}\n${g.map(c => `- ${c.article}${Number(c.quantite) > 1 ? ' ×' + c.quantite : ''}`).join('\n')}\n`;
+  });
+  return t.trim();
+}
 
 /* ---------- Événements ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
@@ -1622,8 +1701,11 @@ $('frigo').onclick = e => {
 
 $('getRec').onclick = getRecipes;
 $('personnes').value = lsGet('frigo_people', 4); $('planPers').value = lsGet('frigo_people', 4);
+renderReg();
 if (REC) $('getRec').textContent = 'Proposer d\'autres idées';
 $('recettes').onclick = e => {
+  const sh = e.target.closest('[data-share-rec]');
+  if (sh && REC) { const x = REC.recettes[+sh.dataset.shareRec]; if (x) shareText(x.titre, recipeShareText(x)); return; }
   const b = e.target.closest('[data-buy]');
   if (!b || !REC) return;
   const list = (REC.recettes[+b.dataset.buy] || {}).a_acheter || [];
@@ -1646,6 +1728,7 @@ $('freq').onclick = e => {
   if (b) { statsAt = 0; api('addCourse', { article: b.dataset.fq, quantite: 1 }); }
 };
 $('clearDone').onclick = () => api('clearDone');
+$('shareCourses').onclick = () => { const t = coursesShareText(); if (!t) { toast('La liste est vide.'); return; } shareText('Liste de courses', t); };
 $('months').onclick = e => { const b = e.target.closest('[data-m]'); if (b) { moisSel = +b.dataset.m; renderSaison(); } };
 
 $('saveCfg').onclick = () => {
