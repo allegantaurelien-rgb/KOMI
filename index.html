@@ -389,7 +389,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 <dialog id="dlgImp">
   <h2>Ticket ou commande drive</h2>
   <div id="impStep1">
-    <p class="hint">Envoie le PDF du ticket : il est lu directement sur ton téléphone, sans clé ni envoi de données, et tu vérifies avant d'ajouter. Les photos demandent la clé API Claude. Pour un ticket reçu par mail : appuie longuement sur la pièce jointe, <b>Enregistrer dans Fichiers</b>, puis choisis-la ici.</p>
+    <p class="hint">Envoie le PDF du ticket : il est lu directement sur ton téléphone, sans clé ni envoi de données, et tu vérifies avant d'ajouter. Les photos demandent une clé IA gratuite (Gemini). Pour un ticket reçu par mail : appuie longuement sur la pièce jointe, <b>Enregistrer dans Fichiers</b>, puis choisis-la ici.</p>
     <label for="impFile">Fichier (PDF, photo)</label>
     <input type="file" id="impFile" accept="application/pdf,image/*,text/plain,text/html">
     <label for="impText">Ou colle le texte du ticket</label>
@@ -464,7 +464,7 @@ let draft = {};          // infos Open Food Facts du produit en cours d'ajout
 
 /* ---------- API ---------- */
 const WANT_V = 3;                                   // version de Code.gs attendue par cette page
-const LONG = { recipes: 1, receipt: 1, plan: 1 };   // appels longs (Claude) : hors file d'attente
+const LONG = { recipes: 1, receipt: 1, plan: 1 };   // appels longs (IA) : hors file d'attente
 let sync = { ok: null, at: 0, msg: '', warn: 0, ver: null }, WARN = [];
 function setSync(p) { Object.assign(sync, p); renderSync(); }
 function renderSync() {
@@ -513,6 +513,7 @@ async function apiRaw(action, data) {
     return null;
   }
   if (json.error) {
+    apiRaw.lastError = json.error;
     toast(json.error);
     if (json.error === 'Code incorrect') { setSync({ ok: false, msg: 'Code secret incorrect' }); openCfg(); }
     else if (action !== 'list' && !LONG[action] && action !== 'stats') api('list');   // l'écran se remet à jour (ex. produit déjà supprimé)
@@ -710,7 +711,7 @@ function renderSaison() {
   $('legumes').innerHTML = li(SAISON[moisSel].l);
 }
 
-/* ---------- Recettes (API Claude via Apps Script) ---------- */
+/* ---------- Recettes (IA via Apps Script) ---------- */
 let REC = null;
 try { REC = JSON.parse(localStorage.getItem('frigo_rec') || 'null'); } catch (e) {}
 
@@ -1402,7 +1403,7 @@ async function impAnalyse() {
     } else if (!f) local = parseTicket(txt.split(/\r?\n/), '');
   } catch (e) { console.warn('lecture directe impossible', e); }
   if (local && local.articles.length >= 3) { reset(); showImp(local); return; }
-  // 2) sinon, lecture avancée par Claude (clé API nécessaire côté Apps Script)
+  // 2) sinon, lecture par l'IA (clé GEMINI_KEY ou ANTHROPIC_KEY nécessaire côté Apps Script)
   const payload = {};
   try {
     if (f) {
@@ -1423,10 +1424,13 @@ async function impAnalyse() {
     }
     if (txt) payload.texte = ((payload.texte ? payload.texte + '\n' : '') + txt).slice(0, 30000);
   } catch (e) { err(e.message || 'Fichier illisible.'); reset(); return; }
+  apiRaw.lastError = '';
   const r = await api('receipt', payload);
   reset();
   if (!r || !r.receipt) {
-    err("Ce ticket n'a pas été reconnu en lecture directe, et la lecture avancée (Claude) n'est pas disponible : voir le message en bas de l'écran. Les PDF de ticket de caisse « une ligne par article » passent sans clé ; pour les photos, il faut la clé API (voir le LISEZMOI).");
+    const why = apiRaw.lastError || '';
+    err(/GEMINI_KEY|ANTHROPIC_KEY|Clé/.test(why) ? "Ce ticket n'a pas été reconnu en lecture directe, et la lecture par IA n'est pas configurée (clé gratuite Gemini : voir le LISEZMOI). Les PDF de ticket « une ligne par article » passent sans clé ; les photos demandent la clé."
+      : "La lecture a échoué" + (why ? ' : ' + why : '.') + ' Réessaie avec le PDF du ticket, ou colle son texte.');
     return;
   }
   showImp(r.receipt);
