@@ -53,6 +53,14 @@ section.on{display:block}
 .empty{padding:48px 8px;text-align:center;color:var(--muted);font-size:16px;line-height:1.5}
 
 /* Congélateur, filtre, fruits et légumes */
+.search{position:relative;margin:0 0 8px}
+.search[hidden]{display:none}
+.search input{width:100%;padding-right:40px}
+.search button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-size:22px;line-height:1;padding:6px 10px;cursor:pointer;color:var(--muted,#888)}
+.search button[hidden]{display:none}
+.stockhint{margin:-2px 0 8px;font-size:14px;padding:8px 12px;border-radius:12px;background:rgba(255,160,0,.14)}
+.stockhint[hidden]{display:none}
+.course .instock{font-size:12px;opacity:.7;margin-left:6px}
 .seg{display:flex;gap:8px;margin:0 0 4px;overflow-x:auto;scrollbar-width:none}
 .seg[hidden]{display:none}
 .seg button{flex:none;border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;cursor:pointer}
@@ -210,6 +218,10 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
 </header>
 
 <section id="s-frigo" class="on">
+  <div class="search" id="searchBox" hidden>
+    <input type="text" inputmode="search" id="q" placeholder="Rechercher un produit…" autocomplete="off" autocapitalize="off" enterkeyhint="search" aria-label="Rechercher dans le stock">
+    <button type="button" id="qClear" aria-label="Effacer la recherche" hidden>×</button>
+  </div>
   <div class="seg" id="seg" hidden></div>
   <div id="frigo"></div>
 </section>
@@ -219,6 +231,7 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <input type="text" id="newCourse" placeholder="Ajouter un article" enterkeyhint="done">
     <button class="btn fill" id="addCourse">Ajouter</button>
   </div>
+  <div id="stockHint" class="stockhint" hidden></div>
   <div id="freq"></div>
   <div id="courses"></div>
   <div class="share-row"><button class="btn" id="shareCourses">Partager la liste</button><button class="btn ghost" id="clearDone">Vider les articles cochés</button></div>
@@ -318,6 +331,9 @@ label{display:block;font-size:14px;font-weight:600;margin:12px 0 5px}
     <button class="btn ghost" data-plus="14">+2 sem</button>
     <button class="btn ghost" data-plus="30">+1 mois</button>
   </div>
+  <label>Où le ranger ?</label>
+  <div class="seg" id="lieuSeg"><button type="button" data-lieu="" class="on">Frigo</button><button type="button" data-lieu="placard">Placard</button></div>
+  <p class="hint" style="margin-top:6px">Placard : pain de mie, conserves, biscuits… tout ce qui ne va pas au frais. L'app s'en souvient pour ce produit.</p>
   <label for="prix">Prix d'une unité, en € (facultatif)</label>
   <input type="number" id="prix" min="0" step="0.01" inputmode="decimal" placeholder="1,20">
   <div class="editonly">
@@ -471,7 +487,7 @@ state.planning = Array.isArray(state.planning) ? state.planning : [];
 let draft = {};          // infos Open Food Facts du produit en cours d'ajout
 
 /* ---------- API ---------- */
-const WANT_V = 3;                                   // version de Code.gs attendue par cette page
+const WANT_V = 4;                                   // version de Code.gs attendue par cette page
 const LONG = { recipes: 1, receipt: 1, plan: 1 };   // appels longs (IA) : hors file d'attente
 let sync = { ok: null, at: 0, msg: '', warn: 0, ver: null }, WARN = [];
 function setSync(p) { Object.assign(sync, p); renderSync(); }
@@ -573,7 +589,8 @@ function render() {
   if (TAB === 'bilan') run(renderBilan, 'bilan');
 }
 
-let filtre = 'all';           // 'all' | 'frais' | 'congele'
+let filtre = 'all';           // 'all' | 'frais' | 'placard' | 'congele'
+const isPantry = i => i.lieu === 'placard' && i.etat !== 'congele';
 function fmtDate(s) { const p = String(s || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; }
 // Date lisible, par exemple « mer. 12/11 » (l'année n'apparaît que si ce n'est pas l'année en cours)
 function dateLabel(s) {
@@ -600,26 +617,36 @@ const keyOf = i => String(i.code_barres || '').trim() || String(i.nom || '').tri
 const prodOf = key => state.produits.find(p => String(p.cle) === key);
 function stockOfKey(key) { return state.frigo.filter(i => keyOf(i) === key).reduce((s, i) => s + (Number(i.quantite) || 0), 0); }
 
+let Q = '';
 function renderFrigo() {
   const all = state.frigo.map(i => ({ ...i, etat: i.etat || '', d: daysLeft(i.date_peremption) }));
   const first = {};
   all.forEach(i => { const k = keyOf(i); first[k] = Math.min(first[k] ?? 9999, i.d ?? 9999); });
   all.sort((a, b) => (first[keyOf(a)] - first[keyOf(b)]) || keyOf(a).localeCompare(keyOf(b)) || ((a.d ?? 9999) - (b.d ?? 9999)));
-  const nFrozen = all.filter(i => i.etat === 'congele').length;
+  const nFrozen = all.filter(i => i.etat === 'congele').length, nPantry = all.filter(isPantry).length;
   if (!nFrozen && filtre === 'congele') filtre = 'all';
+  if (!nPantry && filtre === 'placard') filtre = 'all';
   const urgent = all.filter(i => i.d !== null && i.d <= 3).length;
   if (TAB === 'frigo') $('summary').innerHTML = !all.length ? "Rien en stock pour l'instant"
     : urgent ? `<b>${urgent} produit${urgent > 1 ? 's' : ''} à consommer sous 3 jours</b>`
-    : `${all.length} produit${all.length > 1 ? 's' : ''}${nFrozen ? ', dont ' + nFrozen + ' au congélateur' : ''}, rien d'urgent`;
+    : `${all.length} produit${all.length > 1 ? 's' : ''}${nPantry ? ', dont ' + nPantry + ' au placard' : ''}${nFrozen ? (nPantry ? ' et ' : ', dont ') + nFrozen + ' au congélateur' : ''}, rien d'urgent`;
 
   // Le filtre n'apparaît que si le congélateur est utilisé
-  $('seg').hidden = !nFrozen;
-  $('seg').innerHTML = [['all', 'Tout', all.length], ['frais', 'Frigo', all.length - nFrozen], ['congele', 'Congélateur', nFrozen]]
-    .map(([k, t, n]) => `<button data-f="${k}" class="${filtre === k ? 'on' : ''}">${t} (${n})</button>`).join('');
+  const qn = norm(Q).trim();
+  $('searchBox').hidden = !all.length; $('qClear').hidden = !Q;
+  $('seg').hidden = (!nFrozen && !nPantry) || !!qn;
+  $('seg').innerHTML = [['all', 'Tout', all.length], ['frais', 'Frigo', all.length - nFrozen - nPantry], ...(nPantry ? [['placard', 'Placard', nPantry]] : []), ['congele', 'Congélateur', nFrozen]]
+    .filter(x => x[0] !== 'congele' || nFrozen).map(([k, t, n]) => `<button data-f="${k}" class="${filtre === k ? 'on' : ''}">${t} (${n})</button>`).join('');
 
-  const items = all.filter(i => filtre === 'all' || (filtre === 'congele') === (i.etat === 'congele'));
+  const items = qn ? all.filter(i => qn.split(/\s+/).every(w => norm(i.nom + ' ' + i.marque).includes(w)))
+    : all.filter(i => filtre === 'all' || (filtre === 'congele' && i.etat === 'congele') || (filtre === 'placard' && isPantry(i)) || (filtre === 'frais' && i.etat !== 'congele' && !isPantry(i)));
+  if (!items.length && qn) {
+    $('frigo').innerHTML = `<div class="empty">Aucun produit « ${esc(Q.trim())} » en stock.<br><button class="btn" id="qToCourses" style="margin-top:10px">+ Ajouter « ${esc(Q.trim())} » aux courses</button></div>`;
+    return;
+  }
   if (!items.length) {
     $('frigo').innerHTML = filtre === 'congele' ? '<div class="empty">Rien au congélateur.</div>'
+      : filtre === 'placard' ? '<div class="empty">Rien au placard.</div>'
       : '<div class="empty">Rien dans le frigo pour l\'instant.<br>Appuie sur + pour scanner un produit.</div>';
     return;
   }
@@ -638,7 +665,7 @@ function renderFrigo() {
       return `<div class="item ${tone} ${kind} ${again}">
         <div class="top" data-edit="${id}" role="button" tabindex="0" aria-label="Modifier ${esc(i.nom)}">
           ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="ph"></div>'}
-          <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}</div></div>
+          <div><div class="name">${esc(i.nom)}</div><div class="meta">${esc(i.marque)}${i.nutriscore ? ' · Nutri-Score ' + esc(String(i.nutriscore).toUpperCase()) : ''}${isPantry(i) && (filtre !== 'placard' || qn) ? ' · Placard' : ''}${i.etat === 'congele' && qn ? ' · Congélateur' : ''}</div></div>
           <div class="qty">×${esc(i.quantite)}</div>
         </div>
         <div class="bar"><i style="width:${i.d === null ? 0 : pct}%"></i></div>
@@ -672,10 +699,20 @@ const AISLE_RX = [        // l'ordre compte : le premier rayon qui correspond ga
 const AISLE_ORDER = ['Fruits & légumes', 'Boulangerie', 'Boucherie & poisson', 'Crémerie', 'Épicerie', 'Boissons', 'Surgelés', 'Hygiène & maison', 'Autre'];
 function aisleOf(name) { const n = norm(name); for (const [a, r] of AISLE_RX) if (r.test(n)) return a; return 'Autre'; }
 
+// Produits du stock qui correspondent à un article (tous les mots saisis présents dans le nom)
+function stockMatches(txt) {
+  const ws = norm(txt).trim().split(/\s+/).filter(w => w.length > 1); if (!ws.length) return [];
+  return state.frigo.filter(i => { const n = norm(i.nom + ' ' + i.marque); return ws.every(w => n.includes(w)); });
+}
+function stockBadge(article) {
+  const m = stockMatches(article); if (!m.length) return '';
+  const q = m.reduce((s, i) => s + (Number(i.quantite) || 0), 0);
+  return `<span class="instock">· déjà en stock (${q})</span>`;
+}
 function courseRow(c) {
   return `<div class="course ${c.done ? 'done' : ''}">
       <input type="checkbox" ${c.done ? 'checked' : ''} data-tog="${esc(c.id)}" aria-label="Coché">
-      <span>${esc(c.article)}${Number(c.quantite) > 1 ? ' ×' + esc(c.quantite) : ''}</span>
+      <span>${esc(c.article)}${Number(c.quantite) > 1 ? ' ×' + esc(c.quantite) : ''}${c.done ? '' : stockBadge(c.article)}</span>
       <button class="x" data-del="${esc(c.id)}" aria-label="Supprimer">×</button>
     </div>`;
 }
@@ -925,6 +962,7 @@ function applyProduct(p) {
   $('found').innerHTML = `<div class="found">${draft.image ? `<img src="${esc(draft.image)}" alt="">` : ''}
     <div><b>${esc(p.nom || 'Produit trouvé')}</b><br><small>${esc(p.marque)}${p.nutriscore ? ' · Nutri-Score ' + esc(p.nutriscore.toUpperCase()) : ''}</small></div></div>`;
   syncFiche();
+  suggestLieu();
   $('dlc').focus();
 }
 
@@ -984,9 +1022,21 @@ async function searchOFF() {
 }
 
 /* ---------- Ajout / modification d'un produit ---------- */
-let editId = null, editMin0 = '';     // null = ajout, sinon id du produit modifié
+let editId = null, editMin0 = '', lieu = '';     // null = ajout, sinon id du produit modifié
+function setLieu(v) {
+  lieu = v === 'placard' ? 'placard' : '';
+  document.querySelectorAll('#lieuSeg button').forEach(b => b.classList.toggle('on', b.dataset.lieu === lieu));
+}
+// Nouveau produit : on propose le lieu habituel (mémorisé, ou celui d'une ligne déjà en stock)
+function suggestLieu() {
+  if (editId) return;
+  const key = keyOf({ code_barres: $('code').value, nom: $('nom').value });
+  if (!key) return;
+  const p = prodOf(key), inStock = state.frigo.find(i => keyOf(i) === key && i.etat !== 'congele');
+  setLieu(p && p.lieu !== undefined && p.lieu !== '' ? p.lieu : (inStock ? inStock.lieu : lieu));
+}
 function resetForm() {
-  editId = null; draft = {}; SUGG = []; lastLookup = '';
+  editId = null; draft = {}; SUGG = []; lastLookup = ''; setLieu('');
   ['code', 'nom', 'marque', 'dlc', 'search', 'prix', 'minStock'].forEach(i => $(i).value = '');
   $('qte').value = 1; $('found').innerHTML = ''; $('sugg').hidden = true; $('prodBox').hidden = true;
   $('ficheOut').innerHTML = ''; $('ficheBox').hidden = true;
@@ -994,8 +1044,8 @@ function resetForm() {
 function openAdd() {
   resetForm();
   $('dlgAdd').classList.remove('editing');
-  $('dlgTitle').textContent = 'Ajouter au frigo';
-  $('saveAdd').textContent = 'Ajouter au frigo';
+  $('dlgTitle').textContent = 'Ajouter un produit';
+  $('saveAdd').textContent = 'Ajouter';
   $('dlgAdd').showModal();
   startScan();                                  // la caméra s'ouvre tout de suite, comme dans une app de scan
 }
@@ -1010,6 +1060,7 @@ function openEdit(id) {
   $('marque').value = it.marque || '';
   $('qte').value = it.quantite || 1;
   $('dlc').value = it.date_peremption || '';
+  setLieu(it.lieu || '');
   $('prix').value = it.prix || '';
   const pr = prodOf(keyOf(it));
   $('minStock').value = pr && pr.min_stock ? pr.min_stock : '';
@@ -1026,7 +1077,7 @@ async function saveAdd(next) {
   const payload = {
     nom, marque: $('marque').value.trim(), quantite: $('qte').value, date_peremption: $('dlc').value,
     code_barres: $('code').value.trim(), image: draft.image || '', nutriscore: draft.nutriscore || '',
-    prix: $('prix').value,
+    prix: $('prix').value, lieu,
   };
   remember({ code: payload.code_barres, nom, marque: payload.marque, image: payload.image, nutriscore: payload.nutriscore });
   await stopScan();
@@ -1040,11 +1091,11 @@ async function saveAdd(next) {
   api('addFrigo', payload);
   if (next) {                                   // on enchaîne : formulaire vide, caméra rouverte
     resetForm();
-    $('found').innerHTML = `<div class="found"><b>✓ ${esc(nom)} ajouté au frigo</b></div>`;
+    $('found').innerHTML = `<div class="found"><b>✓ ${esc(nom)} ajouté ${payload.lieu === 'placard' ? 'au placard' : 'au frigo'}</b></div>`;
     startScan();
   } else {
     $('dlgAdd').close();
-    toast('Ajouté au frigo');
+    toast(payload.lieu === 'placard' ? 'Ajouté au placard' : 'Ajouté au frigo');
   }
 }
 
@@ -1155,6 +1206,7 @@ function applyProduce(name) {
   draft = {}; lastLookup = '';
   $('code').value = ''; $('nom').value = name; $('marque').value = ''; $('dlc').value = isoPlus(days);
   $('sugg').hidden = true; $('prodBox').hidden = true;
+  suggestLieu();
   note(`<b>${esc(name)}</b> : date indicative à ${days} jours (sans code-barres). Ajuste-la selon l'état du produit.`);
   $('found').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
@@ -1340,7 +1392,7 @@ function classifyItem(nom, cat) {
   if (/courge|butternut|potiron/.test(n)) return ['fruits_legumes', 30];
   if (/legume|fruit/.test(c)) return ['fruits_legumes', 7];
   if (/biscuit|cereale|poudre|chocolat|conserve|potage|panification|patis|\bpates?\b|produits sales|aperitif|epicerie|\briz\b|farine|sucre|huile|sauce|condiment|\bcafe\b|confiserie|snack|compote|bonbon|confiture|\bthe\b/.test(c)) return ['sec', 0];
-  if (/pain de mie|viennois|brioche/.test(c)) return ['frais', 14];
+  if (/pain de mie|viennois|brioche/.test(c)) return ['boulangerie', 10];
   if (/^(pain|boulang)/.test(c.trim())) return ['boulangerie', 2];
   if (/vol\.|volaille|viande|boucher|poisson|maree|boeuf|porc/.test(c)) return ['frais', 5];
   if (/charct|traiteur/.test(c)) return ['frais', 12];
@@ -1477,7 +1529,9 @@ $('impBack').onclick = () => { $('impStep1').hidden = false; $('impStep2').hidde
 $('impGo').onclick = impAnalyse;
 $('impAdd').onclick = async () => {
   const items = IMP.articles.filter(a => a.keep && String(a.nom).trim())
-    .map(a => ({ nom: String(a.nom).trim(), quantite: Number(a.quantite) || 1, date_peremption: a.date_peremption || '', prix: a.prix === '' ? '' : Number(a.prix) || '', surgele: a.rayon === 'surgele' }));
+    
+    .map(a => ({ nom: String(a.nom).trim(), quantite: Number(a.quantite) || 1, date_peremption: a.date_peremption || '', prix: a.prix === '' ? '' : Number(a.prix) || '', surgele: a.rayon === 'surgele',
+      lieu: ['sec', 'boisson', 'boulangerie'].includes(a.rayon) ? 'placard' : '' }));
   if (!items.length) return;
   $('impAdd').disabled = true;
   const r = await api('addMany', { items });
@@ -1654,6 +1708,9 @@ $('code').oninput = e => {
   else if (v.length < 8) lastLookup = '';
 };
 $('code').onchange = e => lookupOnce(e.target.value);
+$('lieuSeg').onclick = e => { const b = e.target.closest('[data-lieu]'); if (b) setLieu(b.dataset.lieu); };
+$('nom').addEventListener('change', suggestLieu);
+$('code').addEventListener('change', suggestLieu);
 $('saveAdd').onclick = () => saveAdd(false);
 $('saveNext').onclick = () => saveAdd(true);
 $('searchBtn').onclick = searchOFF;
@@ -1713,9 +1770,20 @@ $('recettes').onclick = e => {
   toast(list.length > 1 ? 'Ingrédients ajoutés aux courses' : 'Ajouté aux courses');
 };
 
+$('q').oninput = () => { Q = $('q').value; renderFrigo(); };
+$('qClear').onclick = () => { Q = ''; $('q').value = ''; renderFrigo(); $('q').focus(); };
+$('frigo').addEventListener('click', e => {
+  if (!e.target.closest('#qToCourses')) return;
+  const v = Q.trim(); if (!v) return; Q = ''; $('q').value = ''; statsAt = 0; api('addCourse', { article: v, quantite: 1 }); toast('Ajouté aux courses');
+});
+$('newCourse').addEventListener('input', () => {
+  const v = $('newCourse').value.trim(), m = v.length >= 2 ? stockMatches(v) : [];
+  $('stockHint').hidden = !m.length;
+  if (m.length) $('stockHint').innerHTML = '⚠️ Déjà en stock : ' + m.slice(0, 4).map(i => `<b>${esc(i.nom)}</b> ×${esc(i.quantite)}`).join(', ') + (m.length > 4 ? '…' : '');
+});
 $('addCourse').onclick = () => {
   const v = $('newCourse').value.trim(); if (!v) return;
-  $('newCourse').value = ''; api('addCourse', { article: v, quantite: 1 });
+  $('newCourse').value = ''; $('stockHint').hidden = true; api('addCourse', { article: v, quantite: 1 });
 };
 $('newCourse').onkeydown = e => { if (e.key === 'Enter') $('addCourse').click(); };
 $('courses').onclick = e => {
